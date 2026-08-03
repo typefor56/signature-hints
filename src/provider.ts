@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
-import { isExcluded, resolveCallName } from './callsite';
-import { documentationText, escapeText, parameterRange, renderSignatureHtml, RenderOptions } from './render';
+import { ExcludeSetting, excludePatterns, isExcluded, resolveCallName } from './callsite';
+import { escapeText, formatDocumentation, parameterRange, renderSignatureHtml, RenderOptions } from './render';
+import { compactSignature } from './simplify';
 import { ThemeColors } from './theme';
 
 type Mode = 'signature' | 'doc' | 'both' | 'none';
 type Overloads = 'all' | 'active';
 type Header = 'none' | 'name' | 'name+count';
+type SignatureStyle = 'compact' | 'full';
 
 /**
  * A truthy result with no signatures. Returning it stops VS Code's provider
@@ -47,13 +49,14 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		if (!config.get<boolean>('enabled', true)) {
 			return suppressed();
 		}
-		const mode = config.get<Mode>('mode', 'signature');
+		const mode = config.get<Mode>('mode', 'both');
 		if (mode === 'none') {
 			return suppressed();
 		}
 
 		const name = resolveCallName(document, position);
-		if (isExcluded(name, config.get<string[]>('exclude', []))) {
+		const exclude = excludePatterns(config.get<ExcludeSetting>('exclude'), document.languageId);
+		if (isExcluded(name, exclude)) {
 			return suppressed();
 		}
 
@@ -94,8 +97,10 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		mode: Mode,
 		config: vscode.WorkspaceConfiguration,
 	): vscode.SignatureHelp | undefined {
-		const overloads = config.get<Overloads>('overloads', 'all');
-		const header = config.get<Header>('header', 'name');
+		const overloads = config.get<Overloads>('overloads', 'active');
+		const header = config.get<Header>('header', 'none');
+		const style = config.get<SignatureStyle>('signatureStyle', 'compact');
+		const maxDocLines = config.get<number>('maxDocLines', 12);
 		const options: RenderOptions = {
 			colors: config.get<'theme' | 'off'>('colors', 'theme'),
 			monospace: config.get<boolean>('monospace', true),
@@ -106,13 +111,17 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		const activeParameter = upstream.activeParameter ?? 0;
 
 		const renderOne = (signature: vscode.SignatureInformation) =>
-			renderSignatureHtml(signature.label, parameterRange(signature, activeParameter), this.theme, options);
+			this.renderSignature(signature, activeParameter, name, style, options);
 
 		if (overloads === 'active') {
 			const rendered = signatures.map((signature, index) => {
 				const info = new vscode.SignatureInformation(label(header, name, index, signatures.length));
 				info.parameters = [];
-				const body = this.compose(mode, renderOne(signature), documentationText(signature.documentation));
+				const body = this.compose(
+					mode,
+					renderOne(signature),
+					formatDocumentation(signature.documentation, maxDocLines),
+				);
 				if (!body) {
 					return undefined;
 				}
@@ -131,7 +140,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		}
 
 		const active = signatures[activeSignature];
-		const body = this.compose(mode, html, documentationText(active?.documentation));
+		const body = this.compose(mode, html, formatDocumentation(active?.documentation, maxDocLines));
 		if (!body) {
 			return undefined;
 		}
@@ -140,6 +149,40 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		info.parameters = [];
 		info.documentation = body;
 		return { signatures: [info], activeSignature: 0, activeParameter: 0 };
+	}
+
+	/**
+	 * One signature line: `print(*values, sep=" ", flush=False)`.
+	 *
+	 * The callee's name is prepended because language servers report a label that
+	 * starts at the parenthesis, and reading the name off the popup itself is what
+	 * lets the widget's plain header line be turned off.
+	 */
+	private renderSignature(
+		signature: vscode.SignatureInformation,
+		activeParameter: number,
+		name: string | undefined,
+		style: SignatureStyle,
+		options: RenderOptions,
+	): string {
+		let label = signature.label;
+		let active = parameterRange(signature, activeParameter);
+
+		if (style === 'compact') {
+			const compact = compactSignature(label, signature.parameters, activeParameter);
+			label = compact.label;
+			active = compact.active;
+		}
+
+		// A label that already carries the name — TypeScript's does — is left alone.
+		if (name && label.startsWith('(')) {
+			if (active) {
+				active = [active[0] + name.length, active[1] + name.length];
+			}
+			label = name + label;
+		}
+
+		return renderSignatureHtml(label, active, this.theme, options);
 	}
 
 	/** Assembles the popup body; returns undefined when there is nothing to show. */
@@ -155,7 +198,9 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 			return undefined;
 		}
 
-		const markdown = new vscode.MarkdownString(parts.join('\n\n---\n\n'));
+		// A blank line, not a rule: the docstring's own markdown blocks need one to
+		// parse, and a rule costs height the 440px-wide widget cannot spare.
+		const markdown = new vscode.MarkdownString(parts.join('\n\n'));
 		markdown.supportHtml = true;
 		markdown.isTrusted = false;
 		return markdown;

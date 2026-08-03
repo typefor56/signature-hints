@@ -2,7 +2,7 @@
   "name": "signature-hints",
   "displayName": "Signature Hints",
   "description": "Parameter hints with theme-matched syntax highlighting, per-function exclusions, signature/doc modes and a one-key toggle.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "for56",
   "license": "MIT",
   "keywords": [
@@ -35,32 +35,76 @@
         },
         "signatureHints.mode": {
           "type": "string",
-          "enum": ["signature", "doc", "both", "none"],
+          "enum": [
+            "signature",
+            "doc",
+            "both",
+            "none"
+          ],
           "enumDescriptions": [
             "Signature only.",
             "Documentation only.",
             "Signature and documentation.",
             "Show nothing (the popup stays hidden)."
           ],
-          "default": "signature",
+          "default": "both",
           "scope": "language-overridable",
           "description": "What the parameter hints popup shows."
         },
-        "signatureHints.exclude": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": [],
+        "signatureHints.signatureStyle": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "full"
+          ],
+          "enumDescriptions": [
+            "Parameter names and defaults only, like JupyterLab: print(*values, sep=' ', end='\\n', file=None, flush=False).",
+            "The signature exactly as the language server reports it, type annotations and return type included."
+          ],
+          "default": "compact",
           "scope": "language-overridable",
-          "markdownDescription": "Calls that never show a popup. Glob patterns matched against both the bare name and the qualified name: `print`, `logging.*`, `np.random.*`. `*` does not cross dots; use `**` for that."
+          "markdownDescription": "How much of the signature to show. `compact` drops type annotations and the return type, which is what keeps typed stubs (numpy, pandas, matplotlib, scikit-learn) from wrapping into a wall of text."
+        },
+        "signatureHints.exclude": {
+          "type": [
+            "array",
+            "object"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": {
+            "python": [
+              "print"
+            ]
+          },
+          "scope": "language-overridable",
+          "markdownDescription": "Calls that never show a popup. Either a flat list, or an object keyed by language id with `*` for every language:\n\n```json\n{ \"python\": [\"print\", \"np.random.*\"], \"*\": [\"assert*\"] }\n```\n\nPatterns are globs matched against both the bare name and the qualified name. `*` does not cross dots; use `**` for that."
+        },
+        "signatureHints.maxDocLines": {
+          "type": "number",
+          "default": 12,
+          "minimum": 0,
+          "scope": "language-overridable",
+          "markdownDescription": "Lines of documentation to keep before truncating with `…`. `0` keeps the whole docstring. Lower this if the popup grows tall enough to jump away from the cursor."
         },
         "signatureHints.overloads": {
           "type": "string",
-          "enum": ["all", "active"],
+          "enum": [
+            "all",
+            "active"
+          ],
           "enumDescriptions": [
             "Stack every overload at once, highlighting the active one.",
             "Show the active overload only, with the built-in 1/2 navigation."
           ],
-          "default": "all",
+          "default": "active",
           "scope": "language-overridable",
           "description": "How to present multiple overloads."
         },
@@ -73,19 +117,26 @@
         },
         "signatureHints.header": {
           "type": "string",
-          "enum": ["none", "name", "name+count"],
+          "enum": [
+            "none",
+            "name",
+            "name+count"
+          ],
           "enumDescriptions": [
             "Leave the popup's plain header line empty.",
             "Show the called function's name.",
             "Show the called function's name and the overload count."
           ],
-          "default": "name",
+          "default": "none",
           "scope": "language-overridable",
-          "description": "Content of the popup's plain (non-colored) header line. VS Code always reserves this line, so \"none\" leaves a thin blank strip."
+          "description": "Content of the popup's plain (non-colored) header line. The colored signature already starts with the function name, so this is off by default; VS Code always reserves the line, leaving a thin blank strip."
         },
         "signatureHints.colors": {
           "type": "string",
-          "enum": ["theme", "off"],
+          "enum": [
+            "theme",
+            "off"
+          ],
           "enumDescriptions": [
             "Color the signature using the active color theme's token colors.",
             "Render the signature without syntax coloring."
@@ -102,8 +153,12 @@
         },
         "signatureHints.languages": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["*"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "*"
+          ],
           "description": "Language ids to take over. \"*\" means every language."
         }
       }

@@ -156,3 +156,56 @@ export function documentationText(
 	}
 	return typeof documentation === 'string' ? documentation : documentation.value;
 }
+
+/**
+ * Prepares a docstring for the widget, which sets `white-space: initial` on the
+ * docs area — line breaks and indentation are lost unless they survive as HTML.
+ *
+ * A plain string is escaped and joined with `<br>`. Markdown is left alone
+ * except for a trailing double space per line, the markdown hard break, so a
+ * numpydoc parameter list does not collapse into one paragraph; lines inside
+ * fenced code blocks keep their own whitespace handling and are skipped.
+ */
+export function formatDocumentation(
+	documentation: string | vscode.MarkdownString | undefined,
+	maxLines: number,
+): string {
+	const raw = documentationText(documentation).replace(/\s+$/, '');
+	if (!raw) {
+		return '';
+	}
+
+	const isMarkdown = typeof documentation !== 'string';
+	let lines = raw.split('\n');
+	const truncated = maxLines > 0 && lines.length > maxLines;
+	if (truncated) {
+		lines = lines.slice(0, maxLines);
+	}
+
+	let out: string;
+	if (isMarkdown) {
+		let fenced = false;
+		out = lines
+			.map((line) => {
+				if (/^\s*```/.test(line)) {
+					fenced = !fenced;
+					return line;
+				}
+				return fenced || !line.trim() || line.endsWith('  ') ? line : `${line}  `;
+			})
+			.join('\n');
+		if (fenced) {
+			out += '\n```';
+		}
+	} else {
+		out = lines.map((line) => indent(line) + escapeText(line.trim())).join('<br>');
+	}
+
+	return truncated ? `${out}${isMarkdown ? '\n\n' : '<br>'}…` : out;
+}
+
+/** Leading spaces as non-breaking ones, since the docs area collapses runs of whitespace. */
+function indent(line: string): string {
+	const width = /^[ \t]*/.exec(line)![0].replace(/\t/g, '    ').length;
+	return '&nbsp;'.repeat(width);
+}

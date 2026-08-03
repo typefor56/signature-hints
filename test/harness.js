@@ -62,8 +62,9 @@ Module.globalPaths.push(require('path').join(__dirname, '..', 'node_modules'));
 
 const { tokenizeSignature } = require(path.join(OUT, 'tokenize.js'));
 const { ThemeColors } = require(path.join(OUT, 'theme.js'));
-const { renderSignatureHtml, parameterRange } = require(path.join(OUT, 'render.js'));
-const { resolveCallName, isExcluded } = require(path.join(OUT, 'callsite.js'));
+const { renderSignatureHtml, parameterRange, formatDocumentation } = require(path.join(OUT, 'render.js'));
+const { resolveCallName, isExcluded, excludePatterns } = require(path.join(OUT, 'callsite.js'));
+const { compactSignature } = require(path.join(OUT, 'simplify.js'));
 
 let failures = 0;
 const check = (name, actual, expected) => {
@@ -197,6 +198,56 @@ check('deep glob', isExcluded('np.random.randint', ['np.random.*']), true);
 check('no false positive', isExcluded('pprint', ['print']), false);
 check('empty patterns', isExcluded('print', []), false);
 check('undefined name', isExcluded(undefined, ['print']), false);
+
+console.log('\n== exclusions by language ==');
+check('flat list still works', excludePatterns(['print'], 'python'), ['print']);
+check('language bucket', excludePatterns({ python: ['print'], javascript: ['console.log'] }, 'python'), ['print']);
+check('other language unaffected', excludePatterns({ python: ['print'] }, 'javascript'), []);
+check('star applies everywhere', excludePatterns({ '*': ['assert'], python: ['print'] }, 'python'), ['assert', 'print']);
+check('missing setting', excludePatterns(undefined, 'python'), []);
+
+// ---------- compact signatures ----------
+console.log('\n== compact signature ==');
+
+// Pylance's label for print, with the offsets it reports for each parameter.
+const PRINT = '(*values: object, sep: str | None = " ", end: str | None = "\\n", file: SupportsWrite[str] | None = None, flush: Literal[False] = False) -> None';
+const printParams = [];
+for (const text of ['*values: object', 'sep: str | None = " "', 'end: str | None = "\\n"',
+                    'file: SupportsWrite[str] | None = None', 'flush: Literal[False] = False']) {
+  const at = PRINT.indexOf(text);
+  printParams.push({ label: [at, at + text.length] });
+}
+const printCompact = compactSignature(PRINT, printParams, 1);
+check('print compacts to names and defaults', printCompact.label,
+  '(*values, sep=" ", end="\\n", file=None, flush=False)');
+check('active parameter tracks the rewrite', printCompact.label.slice(...printCompact.active), 'sep=" "');
+
+// The numpy overload from the screenshot: annotations dwarf the names.
+const NPARRAY = '(object: _ArrayLike, dtype: None = ..., *, copy: bool | _CopyMode = ..., order: _OrderKACF = ..., subok: bool = ..., ndmin: int = ..., like: _SupportsArrayFunc | None = ...) -> NDArray';
+check('np.array without server offsets', compactSignature(NPARRAY, undefined, 0).label,
+  '(object, dtype=..., copy=..., order=..., subok=..., ndmin=..., like=...)');
+check('bare * marker dropped', compactSignature(NPARRAY, undefined, 0).label.includes(', *,'), false);
+
+check('positional-only marker dropped', compactSignature('(stop: SupportsIndex, /) -> range', undefined, 0).label, '(stop)');
+check('no parameters', compactSignature('() -> None', undefined, 0).label, '()');
+check('nested default keeps its commas', compactSignature('(a: Dict[str, int] = {"x": 1, "y": 2})', undefined, 0).label, '(a={"x": 1, "y": 2})');
+check('comparison in a default is not a split', compactSignature('(a: bool = x >= 1)', undefined, 0).label, '(a=x >= 1)');
+check('string label parameters', compactSignature('(a: int, b: str = "z")', [{ label: 'a: int' }, { label: 'b: str = "z"' }], 1).label, '(a, b="z")');
+check('typescript label untouched by name prefixing', compactSignature('(a: number, b?: string[]): void', undefined, 0).label, '(a, b?)');
+
+// ---------- documentation ----------
+console.log('\n== documentation ==');
+const plainDoc = formatDocumentation('Prints the values.\n\nsep\n  string inserted between values.', 0);
+check('plainDoc text keeps line breaks', plainDoc.includes('<br>'), true);
+check('plainDoc text indentation survives', plainDoc.includes('&nbsp;&nbsp;string inserted'), true);
+check('plainDoc text is escaped', formatDocumentation('a * b _c_', 0).includes('&#42;'), true);
+check('doc truncated to maxDocLines', formatDocumentation('a\nb\nc\nd', 2), 'a<br>b<br>…');
+check('zero means unlimited', formatDocumentation('a\nb\nc\nd', 0), 'a<br>b<br>c<br>d');
+check('empty documentation', formatDocumentation(undefined, 12), '');
+check('markdown gets hard breaks',
+  formatDocumentation({ value: 'Returns x.\nsep\n  the separator' }, 0),
+  'Returns x.  \nsep  \n  the separator  ');
+check('markdown fence left alone', formatDocumentation({ value: '```py\na = 1\n```' }, 0), '```py\na = 1\n```');
 
 console.log(`\n${failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'}`);
 process.exit(failures ? 1 : 0);
