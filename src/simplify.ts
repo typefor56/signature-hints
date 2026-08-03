@@ -18,6 +18,12 @@ export interface CompactSignature {
 	label: string;
 	/** Range of the active parameter within `label`, if it survived. */
 	active: [number, number] | undefined;
+	/**
+	 * Parameter names alone, without defaults. Overloads of the same function
+	 * usually differ only in the types of their arguments, not in the arguments
+	 * themselves, so this is what tells a real alternative from a repeat.
+	 */
+	names: readonly string[];
 }
 
 /**
@@ -32,32 +38,34 @@ export function compactSignature(
 ): CompactSignature {
 	const spans = parameterSpans(label, parameters);
 	if (!spans.length) {
-		return { label: emptyCall(label), active: undefined };
+		return { label: emptyCall(label), active: undefined, names: [] };
 	}
 
 	let text = '(';
 	let active: [number, number] | undefined;
+	const names: string[] = [];
 
 	for (const [index, span] of spans.entries()) {
 		const piece = compactParameter(label.slice(span[0], span[1]));
 		if (!piece) {
 			continue;
 		}
+		names.push(piece.name);
 		if (text.length > 1) {
 			text += ', ';
 		}
 		const start = text.length;
-		text += piece;
+		text += piece.text;
 		if (index === activeIndex) {
 			active = [start, text.length];
 		}
 	}
 
-	return { label: `${text})`, active };
+	return { label: `${text})`, active, names };
 }
 
 /** `name: Type = default` → `name=default`; markers like `/` and `*` drop out. */
-function compactParameter(raw: string): string | undefined {
+function compactParameter(raw: string): { name: string; text: string } | undefined {
 	const text = raw.trim();
 	if (!text || text === '/' || text === '*') {
 		return undefined;
@@ -76,7 +84,7 @@ function compactParameter(raw: string): string | undefined {
 		return undefined;
 	}
 
-	return fallback ? `${name}=${fallback}` : name;
+	return { name, text: fallback ? `${name}=${fallback}` : name };
 }
 
 /**

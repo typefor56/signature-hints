@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.14.0
+
+- **Overloads taking the same arguments are shown once.** `range` really has two
+  — one argument, or three — and both are kept. `np.array` and `np.zeros_like`
+  have several that differ only in the *types* of their arguments, which is what
+  the `...` stand for and exactly what compact mode exists to hide, so they were
+  stacked as near-identical lines. They fold into one.
+  The comparison is on argument names alone, so a required argument and one with
+  a default count as the same argument. In `signatureStyle: "full"`, where the
+  types are the point, the whole label is compared instead and nothing folds.
+- **`signatureHints.maxOverloads` defaults to `0`** — no cap. With repeats folded
+  away there is usually little left to cap, and hiding a real alternative behind
+  `… 1 more` is worse than one extra line. Set a number to cap; the `… N more`
+  line works as before.
+
 ## 0.13.0
 
 - **Fixed for real: the built-in popup won whenever you typed at speed.** Two

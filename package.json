@@ -122,10 +122,10 @@
         },
         "signatureHints.maxOverloads": {
           "type": "number",
-          "default": 10,
-          "minimum": 1,
+          "default": 0,
+          "minimum": 0,
           "scope": "language-overridable",
-          "description": "Maximum overloads rendered when signatureHints.overloads is \"all\"."
+          "markdownDescription": "Maximum overloads stacked when `signatureHints.overloads` is `\"all\"`; the rest are replaced by a `… N more` line. `0` caps nothing, which is the default: overloads taking the same arguments are already folded into one, so what is left is genuinely different. `np.array` shows a single line, `range` two."
         },
         "signatureHints.header": {
           "type": "string",

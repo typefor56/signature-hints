@@ -365,14 +365,32 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 			monospace: config.get<boolean>('monospace', true),
 		};
 
-		const { signatures, activeSignature, activeParameter } = resolved;
-
 		// The header line is always there and always plain text, so the name goes in
 		// it when it is shown, and into the colored signature when it is not. Either
 		// way it appears exactly once.
 		const inSignature = header === 'none' ? name : undefined;
-		const renderOne = (signature: vscode.SignatureInformation) =>
-			this.renderSignature(signature, activeParameter, inSignature, style, options);
+		const text = (signature: vscode.SignatureInformation) =>
+			signatureText(signature, resolved.activeParameter, inSignature, style);
+		const renderOne = (signature: vscode.SignatureInformation) => {
+			const { label: line, active } = text(signature);
+			return renderSignatureHtml(line, active, this.theme, options);
+		};
+
+		// An overload that takes the same arguments is not an alternative. `range`
+		// really has two — one argument, or three — but numpy's differ only in the
+		// types of theirs, which is what the `...` stand for and exactly what
+		// compact mode exists to hide. Comparing names alone is therefore right in
+		// compact style and wrong in full, where the types are the point.
+		const seen = new Set<string>();
+		const signatures = resolved.signatures.filter((signature) => {
+			const identity = text(signature).key;
+			if (seen.has(identity)) {
+				return false;
+			}
+			seen.add(identity);
+			return true;
+		});
+		const activeSignature = Math.min(resolved.activeSignature, signatures.length - 1);
 
 		if (overloads === 'active') {
 			const rendered = signatures.map((signature, index) => {
@@ -393,8 +411,11 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 			return kept.length ? { signatures: kept, activeSignature, activeParameter: 0 } : undefined;
 		}
 
-		const max = Math.max(1, config.get<number>('maxOverloads', 10));
-		const shown = signatures.slice(0, max);
+		// 0 caps nothing: once identical overloads are folded together there is
+		// usually little left to cap, and hiding a genuine alternative behind
+		// `… 1 more` is worse than one extra line.
+		const max = config.get<number>('maxOverloads', 0);
+		const shown = max > 0 ? signatures.slice(0, max) : signatures;
 		let html = shown.map(renderOne).join('<br>');
 		if (signatures.length > shown.length) {
 			html += `<br>${escapeText(`… ${signatures.length - shown.length} more`)}`;
@@ -410,40 +431,6 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		info.parameters = [];
 		info.documentation = body;
 		return { signatures: [info], activeSignature: 0, activeParameter: 0 };
-	}
-
-	/**
-	 * One signature line: `print(*values, sep=" ", flush=False)`.
-	 *
-	 * `name` is prepended when the header line is off, because language servers
-	 * report a label that starts at the parenthesis and the name has to come from
-	 * somewhere.
-	 */
-	private renderSignature(
-		signature: vscode.SignatureInformation,
-		activeParameter: number,
-		name: string | undefined,
-		style: SignatureStyle,
-		options: RenderOptions,
-	): string {
-		let label = signature.label;
-		let active = parameterRange(signature, activeParameter);
-
-		if (style === 'compact') {
-			const compact = compactSignature(label, signature.parameters, activeParameter);
-			label = compact.label;
-			active = compact.active;
-		}
-
-		// A label that already carries the name — TypeScript's does — is left alone.
-		if (name && label.startsWith('(')) {
-			if (active) {
-				active = [active[0] + name.length, active[1] + name.length];
-			}
-			label = name + label;
-		}
-
-		return renderSignatureHtml(label, active, this.theme, options);
 	}
 
 	/** Assembles the popup body; returns undefined when there is nothing to show. */
@@ -466,6 +453,45 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		markdown.isTrusted = false;
 		return markdown;
 	}
+}
+
+/**
+ * One signature line as text — `print(*values, sep=" ", flush=False)` — with the
+ * range of the active parameter inside it, and a key for spotting repeats.
+ *
+ * `name` is prepended when the header line is off, because language servers
+ * report a label that starts at the parenthesis and the name has to come from
+ * somewhere. Text and colour are kept apart so duplicates can be found before
+ * anything is rendered.
+ */
+function signatureText(
+	signature: vscode.SignatureInformation,
+	activeParameter: number,
+	name: string | undefined,
+	style: SignatureStyle,
+): { label: string; active: [number, number] | undefined; key: string } {
+	let text = signature.label;
+	let active = parameterRange(signature, activeParameter);
+	// In full style the annotations are on show, so two overloads that differ in
+	// them are two overloads; in compact style they have just been stripped.
+	let key = text;
+
+	if (style === 'compact') {
+		const compact = compactSignature(text, signature.parameters, activeParameter);
+		text = compact.label;
+		active = compact.active;
+		key = compact.names.join(',');
+	}
+
+	// A label that already carries the name — TypeScript's does — is left alone.
+	if (name && text.startsWith('(')) {
+		if (active) {
+			active = [active[0] + name.length, active[1] + name.length];
+		}
+		text = name + text;
+	}
+
+	return { label: text, active, key };
 }
 
 function label(header: Header, name: string | undefined, index: number, count: number): string {

@@ -61,7 +61,7 @@ offers to turn it on the first time it starts.
 | `signatureHints.upstreamTimeoutMs` | `250` | Wait before falling back to the last remembered answer. |
 | `signatureHints.maxDocLines` | `0` | Lines of docstring before truncating; `0` keeps all of it. |
 | `signatureHints.overloads` | `"all"` | `all` puts everything in one scrollable popup; `active` uses the 1/5 buttons. |
-| `signatureHints.maxOverloads` | `10` | Cap when stacking. |
+| `signatureHints.maxOverloads` | `0` | Cap when stacking; `0` is no cap. |
 | `signatureHints.header` | `"name"` | Content of the plain header line: `none`, `name`, `name+count`. |
 | `signatureHints.colors` | `"theme"` | `off` disables coloring. |
 | `signatureHints.monospace` | `true` | Render the signature in the editor font. |
@@ -182,6 +182,10 @@ updateMaxHeight() {
   this.domNodes.element.style.maxHeight = t;
 }
 ```
+
+Overloads that take the same arguments are folded into one first. `range` keeps
+its two — one argument, or three — while `np.array`'s differ only in the types of
+theirs, which compact mode hides anyway, so it shows a single line.
 
 So the popup is never taller than a quarter of your editor, and the rest is one
 wheel-scroll away. `signatureHints.overloads: "active"` brings the navigation

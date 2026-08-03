@@ -262,6 +262,42 @@ check('comparison in a default is not a split', compactSignature('(a: bool = x >
 check('string label parameters', compactSignature('(a: int, b: str = "z")', [{ label: 'a: int' }, { label: 'b: str = "z"' }], 1).label, '(a, b="z")');
 check('typescript label untouched by name prefixing', compactSignature('(a: number, b?: string[]): void', undefined, 0).label, '(a, b?)');
 
+// ---------- identical overloads ----------
+console.log('\n== overload dedupe ==');
+// Overloads are folded on their argument names: what the `...` stand for is the
+// argument's type, which is exactly what compact mode drops.
+const names = (label) => compactSignature(label, undefined, 0).names.join(',');
+const distinct = (labels) => [...new Set(labels.map(names))];
+
+// range genuinely has two: one argument, or three.
+check('range keeps both overloads', distinct([
+  '(stop: SupportsIndex, /) -> range[int]',
+  '(start: SupportsIndex, stop: SupportsIndex, step: SupportsIndex = ..., /) -> range[int]',
+]), ['stop', 'start,stop,step']);
+
+// np.array: same arguments every time, only the types differ.
+check('array collapses to one', distinct([
+  '(object: _ArrayType, dtype: None = ..., *, copy: bool = ..., order: _OrderKACF = ..., subok: Literal[True] = ..., ndmin: int = ..., like: _SupportsArrayFunc = ...) -> _ArrayType',
+  '(object: _ArrayLike, dtype: DTypeLike = ..., *, copy: bool = ..., order: _OrderKACF = ..., subok: bool = ..., ndmin: int = ..., like: _SupportsArrayFunc = ...) -> NDArray',
+  '(object: object, dtype: DTypeLike, *, copy: bool = ..., order: _OrderKACF = ..., subok: bool = ..., ndmin: int = ..., like: _SupportsArrayFunc = ...) -> NDArray',
+]), ['object,dtype,copy,order,subok,ndmin,like']);
+
+// A required argument and one with a default are the same argument.
+check('a default does not make an overload', distinct([
+  '(a: int, dtype: DTypeLike) -> int',
+  '(a: int, dtype: DTypeLike = ...) -> int',
+]).length, 1);
+
+// A different argument list must survive.
+check('different names stay distinct', distinct([
+  '(a: int, b: int) -> int',
+  '(x: int, y: int) -> int',
+]).length, 2);
+check('an extra argument stays distinct', distinct([
+  '(a: int) -> int',
+  '(a: int, b: int) -> int',
+]).length, 2);
+
 // ---------- documentation ----------
 console.log('\n== documentation ==');
 const plainDoc = formatDocumentation('Prints the values.\n\nsep\n  string inserted between values.', 0);
