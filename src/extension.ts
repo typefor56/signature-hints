@@ -254,10 +254,13 @@ class Reopener {
 			this.lastNudge = now;
 		}
 
-		// A foreign popup is evidence, not a guess, so it also forces a fresh order
-		// check past the usual throttle — re-triggering without re-registering would
-		// just ask the same provider again.
-		const reclaimed = await this.registration.reclaim(editor.document, position, nudge);
+		// Not having been reached for this revision is the precise signal that
+		// something is in front of us, and the only one worth paying a probe for.
+		// It forces the check past the usual throttle — re-triggering without
+		// re-registering would just ask the same provider again, which is how
+		// spamming commas kept bringing the built-in popup back.
+		const behind = !this.provider.wasCalledFor(editor.document);
+		const reclaimed = await this.registration.reclaim(editor.document, position, behind);
 
 		// Moving between arguments of the same call is left alone otherwise.
 		if (moved || reclaimed || nudge) {

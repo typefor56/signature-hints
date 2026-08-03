@@ -54,6 +54,9 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	/** The call site the popup currently on screen was built for, and when. */
 	lastRenderedCall: string | undefined;
 	lastRenderedAt = 0;
+	/** Document and version of the last real call, for `wasCalledFor`. */
+	private lastCalledUri: string | undefined;
+	private lastCalledVersion = -1;
 	/** Last good answer per call site, so a slow reply does not blank the popup. */
 	private readonly cache = new Map<string, CacheEntry>();
 	/** Milliseconds the last upstream round trip took, for Show Diagnostics. */
@@ -108,6 +111,8 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 			return undefined;
 		}
 		this.onServed?.(document.languageId);
+		this.lastCalledUri = document.uri.toString();
+		this.lastCalledVersion = document.version;
 
 		const config = vscode.workspace.getConfiguration('signatureHints', document);
 		// Stepping aside, not suppressing: the built-in popup takes over again.
@@ -265,6 +270,19 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 
 	get cacheSize(): number {
 		return this.cache.size;
+	}
+
+	/**
+	 * Whether the chain reached us for this exact revision of the document.
+	 *
+	 * The precise, cheap answer to "are we in front". VS Code re-queries providers
+	 * on every content change, so if the version we were last called at matches
+	 * the document's, the chain reached us since that edit — and a provider that
+	 * is not first is never called. Only when this is false is a probe worth
+	 * paying for, which is what keeps the check off the typing path.
+	 */
+	wasCalledFor(document: vscode.TextDocument): boolean {
+		return this.lastCalledUri === document.uri.toString() && this.lastCalledVersion === document.version;
 	}
 
 	/**

@@ -221,8 +221,14 @@ was already its own. Clearing on edit is self-correcting: staying in front means
 VS Code re-queries on the content change and we render again immediately.
 
 Re-triggering is then not enough on its own — asking again without re-registering
-just reaches the same provider — so a foreign popup also forces an order check
-past the probe throttle. And because all this re-triggers eagerly, `Escape` needs
+just reaches the same provider. What decides whether to re-check the order is
+`provider.wasCalledFor(document)`: VS Code re-queries providers on every content
+change, so a match between the document's version and the version we were last
+called at proves the chain reached us since that edit. Exact, and free — while we
+are in front no probe runs at all, which is what keeps this off the typing path.
+Gating it on "does the popup look like ours" instead was a bug: every `,` is a
+trigger character, so comma spam handed the popup back on each keystroke while
+the throttled guess suppressed the re-registration that would have fixed it. And because all this re-triggers eagerly, `Escape` needs
 recording: `signatureHints.dismissHints` marks the call site and `Reopener`
 leaves it alone until the cursor leaves.
 

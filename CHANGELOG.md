@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.0
+
+- **Fixed: spamming commas, or typing a call fast, brought the built-in popup
+  back.** Both were the same mistake. The provider-order check was gated on
+  whether the visible popup looked like ours, which is a guess, and it was
+  throttled — so the extension would re-trigger without ever re-registering,
+  which just asks the same provider again. Meanwhile every `,` is a trigger
+  character, so each one handed the popup back to whoever was in front.
+  There is an exact signal available instead: VS Code re-queries providers on
+  every content change, so if we were last called at the document's current
+  version, the chain reached us since that edit — and a provider that is not
+  first is never called. That now decides when to check the order, past any
+  throttle. It also keeps the check off the typing path: while we are in front
+  the answer is already known, and no probe runs at all.
+
 ## 0.10.0
 
 - **Fixed: accepting a completion left the built-in popup up.** Typing
