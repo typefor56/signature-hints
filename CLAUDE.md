@@ -75,7 +75,14 @@ extension always sends `parameters: []` because it does its own highlighting.
 ```
 
 The header line always exists — hence `signatureHints.header`. Because
-`white-space` is `initial`, line breaks must be `<br>`, not `\n`.
+`white-space` is `initial`, line breaks must be `<br>` (or markdown hard breaks,
+two trailing spaces) and indentation must be `&nbsp;`, not `\n` and spaces.
+
+`max-width: 440px` is a literal, not a CSS variable, and extensions cannot inject
+workbench CSS — **widening the popup is impossible**, only shortening its content
+is. Height is the same story, and it is why the widget jumps away from the
+cursor: a tall content widget gets flipped above the line and pinned to the
+viewport edge. `signatureStyle: compact` and `maxDocLines` exist for this.
 
 ## Module map
 
@@ -83,18 +90,26 @@ The header line always exists — hence `signatureHints.header`. Because
 |---|---|
 | `src/extension.ts` | Activation, provider re-registration, commands, diagnostics. |
 | `src/provider.ts` | The provider: re-entrancy guard, upstream fetch, result assembly. |
-| `src/callsite.ts` | Names the call at the cursor; glob exclusion matching. |
+| `src/callsite.ts` | Names the call at the cursor; per-language glob exclusions. |
+| `src/simplify.ts` | Server label → `name(a, b=1)`, annotations stripped. |
 | `src/theme.ts` | Active theme JSON → scope → color map. |
 | `src/tokenize.ts` | Signature label → classified tokens. |
 | `src/render.ts` | Tokens → sanitizer-safe HTML. |
 
-## Two things that will bite you
+## Three things that will bite you
 
 **Re-entrancy.** `provideSignatureHelp` calls
 `vscode.executeSignatureHelpProvider`, which re-enters this provider. A `Set`
 keyed by `uri|line|character` makes the nested call return `undefined` so the
 chain falls through to the language server. Remove the guard and you get infinite
 recursion.
+
+**Rewriting the label invalidates the server's offsets.**
+`ParameterInformation.label` is usually a `[start, end]` pair into the *original*
+label, so `compactSignature` has to recompute the active parameter's range as it
+rebuilds the string — and `renderSignature` shifts it again when it prepends the
+callee's name. Get this wrong and the highlight lands on the wrong parameter,
+which looks like a bug in the language server rather than in here.
 
 **Markdown runs before HTML.** A Python signature like `(*values: object)` would
 have its `*` parsed as emphasis. `escapeText` emits `&#42;` and friends as a
