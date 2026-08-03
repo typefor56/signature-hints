@@ -211,6 +211,11 @@
         "command": "signatureHints.showDocs",
         "key": "alt+h",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "editor.action.hideHover",
+        "key": "escape",
+        "when": "editorHoverVisible && notebookEditorFocused"
       }
     ]
   },

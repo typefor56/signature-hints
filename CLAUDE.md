@@ -166,7 +166,15 @@ the emptiness through.
 `--vscode-hover-maxWidth` is a real CSS variable, set from
 `_setHoverWidgetMaxDimensions`, and the widget is wrapped in a `ResizableContentWidget`
 whose size is kept in a static (`YE._lastDimensions`) — so a user drag persists
-across hovers. No setting exposes it, but that is what `src/hover.ts` and `alt+h`
+across hovers.
+
+`HideHoverAction` is registered `precondition: void 0` with **no `kbOpts`** — it
+has no default keybinding. `Escape` closes the hover through a DOM listener in
+the widget, which does not consume the key, so any other `Escape` binding fires
+too. Harmless in a plain editor; in a notebook `notebook.cell.quitEdit` also runs
+and drops you out of the cell. `package.json` contributes the missing binding
+under `editorHoverVisible && notebookEditorFocused`; extension keybindings
+outrank built-in ones, so it wins. No setting exposes it, but that is what `src/hover.ts` and `alt+h`
 exist for: the parameter hints widget shows the signature, the hover shows the
 prose.
 

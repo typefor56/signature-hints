@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.1
+
+- **`Escape` closes the `alt+h` hover without leaving the notebook cell.**
+  `HideHoverAction` has no default keybinding — the hover closes through a DOM
+  listener inside the widget, which does not consume the key, so
+  `notebook.cell.quitEdit` fired as well. The missing binding is now contributed
+  under `editorHoverVisible && notebookEditorFocused`, scoped so `Escape` keeps
+  its usual meaning everywhere else.
+
 ## 0.8.0
 
 - **Provider order is now measured, not assumed.** 0.7.1 reclaimed priority based

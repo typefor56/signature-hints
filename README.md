@@ -116,7 +116,8 @@ The parameter hints popup closes first — the two widgets are anchored to the s
 spot and would overlap.
 
 Press `alt+h` **again** to move focus into the hover, then scroll it with the
-arrow keys; `Escape` closes it. Drag its edge once to make it bigger and VS Code
+arrow keys; `Escape` closes it — including inside a notebook cell, where it would
+otherwise drop you out of the cell (see below). Drag its edge once to make it bigger and VS Code
 reuses that size for every later hover.
 
 Hovering with the mouse is untouched: the provider only answers when you press
@@ -137,6 +138,25 @@ Modern's `focusBorder`; use `"editorHoverWidget.border": "#00000000"` to go back
 own parameter hints come back — it is not a way to hide the popup. For that, use
 `signatureHints.mode: "none"`, which suppresses it without touching
 `editor.parameterHints.enabled`.
+
+### `Escape` in a notebook
+
+`HideHoverAction` is registered with no keybinding at all: the hover closes on
+`Escape` through a DOM listener inside the widget, which does not consume the
+key. In a plain editor nothing else is listening, so it looks like a normal
+binding. In a notebook cell, `notebook.cell.quitEdit` is also bound to `Escape`
+and still fires — so the hover closed *and* you left the cell.
+
+The extension contributes the missing binding:
+
+```jsonc
+{ "command": "editor.action.hideHover", "key": "escape",
+  "when": "editorHoverVisible && notebookEditorFocused" }
+```
+
+Extension keybindings outrank built-in ones, so this wins and `quitEdit` does not
+run. It is scoped to notebooks and to a visible hover, so `Escape` keeps its
+usual meaning everywhere else.
 
 ## Commands
 
