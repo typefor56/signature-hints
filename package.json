@@ -1,0 +1,162 @@
+{
+  "name": "signature-hints",
+  "displayName": "Signature Hints",
+  "description": "Parameter hints with theme-matched syntax highlighting, per-function exclusions, signature/doc modes and a one-key toggle.",
+  "version": "0.1.0",
+  "publisher": "for56",
+  "license": "MIT",
+  "keywords": [
+    "parameter hints",
+    "signature help",
+    "python",
+    "jupyter",
+    "syntax highlighting"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "Signature Hints",
+      "properties": {
+        "signatureHints.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "language-overridable",
+          "description": "Master switch. Toggled by the Signature Hints: Toggle command (alt+h)."
+        },
+        "signatureHints.mode": {
+          "type": "string",
+          "enum": ["signature", "doc", "both", "none"],
+          "enumDescriptions": [
+            "Signature only.",
+            "Documentation only.",
+            "Signature and documentation.",
+            "Show nothing (the popup stays hidden)."
+          ],
+          "default": "signature",
+          "scope": "language-overridable",
+          "description": "What the parameter hints popup shows."
+        },
+        "signatureHints.exclude": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "scope": "language-overridable",
+          "markdownDescription": "Calls that never show a popup. Glob patterns matched against both the bare name and the qualified name: `print`, `logging.*`, `np.random.*`. `*` does not cross dots; use `**` for that."
+        },
+        "signatureHints.overloads": {
+          "type": "string",
+          "enum": ["all", "active"],
+          "enumDescriptions": [
+            "Stack every overload at once, highlighting the active one.",
+            "Show the active overload only, with the built-in 1/2 navigation."
+          ],
+          "default": "all",
+          "scope": "language-overridable",
+          "description": "How to present multiple overloads."
+        },
+        "signatureHints.maxOverloads": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "scope": "language-overridable",
+          "description": "Maximum overloads rendered when signatureHints.overloads is \"all\"."
+        },
+        "signatureHints.header": {
+          "type": "string",
+          "enum": ["none", "name", "name+count"],
+          "enumDescriptions": [
+            "Leave the popup's plain header line empty.",
+            "Show the called function's name.",
+            "Show the called function's name and the overload count."
+          ],
+          "default": "name",
+          "scope": "language-overridable",
+          "description": "Content of the popup's plain (non-colored) header line. VS Code always reserves this line, so \"none\" leaves a thin blank strip."
+        },
+        "signatureHints.colors": {
+          "type": "string",
+          "enum": ["theme", "off"],
+          "enumDescriptions": [
+            "Color the signature using the active color theme's token colors.",
+            "Render the signature without syntax coloring."
+          ],
+          "default": "theme",
+          "scope": "language-overridable",
+          "description": "Syntax coloring of the signature."
+        },
+        "signatureHints.monospace": {
+          "type": "boolean",
+          "default": true,
+          "scope": "language-overridable",
+          "markdownDescription": "Render the signature in the editor's monospace font. VS Code also gives it a background pill; to remove it, set `workbench.colorCustomizations` → `textCodeBlock.background` to `#00000000`."
+        },
+        "signatureHints.languages": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["*"],
+          "description": "Language ids to take over. \"*\" means every language."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "signatureHints.toggle",
+        "title": "Toggle",
+        "category": "Signature Hints"
+      },
+      {
+        "command": "signatureHints.cycleMode",
+        "title": "Cycle Mode (signature / doc / both)",
+        "category": "Signature Hints"
+      },
+      {
+        "command": "signatureHints.excludeCallAtCursor",
+        "title": "Exclude Call at Cursor",
+        "category": "Signature Hints"
+      },
+      {
+        "command": "signatureHints.reclaimPriority",
+        "title": "Reclaim Provider Priority",
+        "category": "Signature Hints"
+      },
+      {
+        "command": "signatureHints.showDiagnostics",
+        "title": "Show Diagnostics",
+        "category": "Signature Hints"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "signatureHints.toggle",
+        "key": "alt+h",
+        "when": "editorTextFocus"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "pretest": "npm run compile",
+    "test": "node test/harness.js",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1"
+  }
+}
