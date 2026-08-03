@@ -53,13 +53,13 @@ offers to turn it on the first time it starts.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `signatureHints.enabled` | `true` | Master switch, bound to `alt+h`. |
+| `signatureHints.enabled` | `true` | Master switch (command, no key by default). |
 | `signatureHints.mode` | `"both"` | `signature`, `doc`, `both`, `none`. |
 | `signatureHints.signatureStyle` | `"compact"` | `compact` keeps names and defaults; `full` keeps annotations too. |
 | `signatureHints.exclude` | `{"python": ["print"]}` | Calls that never show a popup. |
-| `signatureHints.maxDocLines` | `12` | Lines of docstring before truncating; `0` for all of it. |
-| `signatureHints.overloads` | `"active"` | `active` shows one with 1/2 navigation; `all` stacks them. |
-| `signatureHints.maxOverloads` | `5` | Cap when stacking. |
+| `signatureHints.maxDocLines` | `0` | Lines of docstring before truncating; `0` keeps all of it. |
+| `signatureHints.overloads` | `"all"` | `all` puts everything in one scrollable popup; `active` uses the 1/5 buttons. |
+| `signatureHints.maxOverloads` | `10` | Cap when stacking. |
 | `signatureHints.header` | `"none"` | Content of the plain header line: `none`, `name`, `name+count`. |
 | `signatureHints.colors` | `"theme"` | `off` disables coloring. |
 | `signatureHints.monospace` | `true` | Render the signature in the editor font. |
@@ -100,44 +100,77 @@ every language.
 `Signature Hints: Exclude Call at Cursor` adds whatever you are inside to the
 list, under the current file's language.
 
+## Reading the docs: `alt+h`
+
+The parameter hints popup is small by construction. For the full documentation,
+`alt+h` opens VS Code's hover — the wide, scrollable, resizable one you get with
+the mouse — and it works from two places:
+
+- **On a function name**, it is exactly the mouse hover.
+- **Inside the call's parentheses**, where there is normally nothing to hover,
+  the extension supplies the callee's documentation instead. `np.array(|)` gives
+  you `np.array`'s docs.
+
+Press `alt+h` **again** to move focus into the hover, then scroll it with the
+arrow keys; `Escape` closes it. Drag its edge once to make it bigger and VS Code
+reuses that size for every later hover.
+
+Hovering with the mouse is untouched: the provider only answers when you press
+the key.
+
 ## Commands
 
 | Command | Key |
 |---|---|
-| Signature Hints: Toggle | `alt+h` |
+| Signature Hints: Show Documentation at Cursor | `alt+h` |
+| Signature Hints: Toggle On/Off | — |
 | Signature Hints: Cycle Mode | — |
 | Signature Hints: Exclude Call at Cursor | — |
 | Signature Hints: Reclaim Provider Priority | — |
 | Signature Hints: Show Diagnostics | — |
 
-## Size and placement
+## One scrollable popup
 
-The popup's width is fixed by VS Code's own stylesheet:
+Everything goes into a single popup: the first signature at the top, the other
+overloads under it, then the documentation. No `1/5` `2/5` buttons to click
+through — scroll instead.
+
+That works because VS Code caps the widget and makes it scrollable:
+
+```js
+updateMaxHeight() {
+  const t = `${Math.max(this.editor.getLayoutInfo().height / 4, 250)}px`;
+  this.domNodes.element.style.maxHeight = t;
+}
+```
+
+So the popup is never taller than a quarter of your editor, whatever is inside
+it, and the rest is one wheel-scroll away. `signatureHints.overloads: "active"`
+brings the navigation buttons back if you prefer them.
+
+### What cannot be changed
+
+The width is fixed by VS Code's own stylesheet:
 
 ```css
 .parameter-hints-widget > .phwrapper { max-width: 440px }
 ```
 
-That is a hard cap. No VS Code setting exposes it and extensions cannot inject
-workbench CSS, so **width is not adjustable** — only the amount of content is.
-That is the lever this extension gives you, and it is the one that matters:
-shortening the content is also what keeps the popup next to your cursor, because
-VS Code flips a tall widget above the line and pins it to the viewport edge.
+A literal, not a CSS variable. No setting exposes it and extensions cannot inject
+workbench CSS, so **the parameter hints popup cannot be widened** — only its
+content shortened. `alt+h` exists because of this: the hover widget has none of
+these limits.
 
-If the popup is taller than you want, or drifts away from the cursor when you
-scroll:
+Its placement is VS Code's too. A tall content widget gets flipped above the
+line and pinned to the viewport edge, which is why it can end up far from the
+cursor. Less content keeps it close:
 
 | Setting | Effect |
 |---|---|
 | `signatureHints.signatureStyle: "compact"` | Usually turns five wrapped lines into one. |
-| `signatureHints.maxDocLines` | Lower it — `4` keeps only the summary. |
-| `signatureHints.mode: "signature"` | Drop the docstring entirely. |
-| `signatureHints.overloads: "active"` | One signature instead of a stack. |
-
-If you truly need a wider popup, the only route is a workbench CSS injector such
-as *Custom CSS and JS Loader*, overriding `.phwrapper`'s `max-width`. That
-patches VS Code's own files and breaks on update; it is outside what an
-extension can do.
+| `signatureHints.mode: "signature"` | Drop the docstring; read it with `alt+h`. |
+| `signatureHints.maxDocLines` | `4` keeps only the summary. |
+| `signatureHints.maxOverloads` | Cap the stack. |
 
 ## Cosmetic notes
 

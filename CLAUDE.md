@@ -80,9 +80,30 @@ two trailing spaces) and indentation must be `&nbsp;`, not `\n` and spaces.
 
 `max-width: 440px` is a literal, not a CSS variable, and extensions cannot inject
 workbench CSS — **widening the popup is impossible**, only shortening its content
-is. Height is the same story, and it is why the widget jumps away from the
-cursor: a tall content widget gets flipped above the line and pinned to the
-viewport edge. `signatureStyle: compact` and `maxDocLines` exist for this.
+is. It is also why a tall widget jumps away from the cursor: VS Code flips a tall
+content widget above the line and pins it to the viewport edge.
+
+**6. The widget is capped and scrollable.**
+
+```js
+updateMaxHeight(){let t=`${Math.max(this.editor.getLayoutInfo().height/4,250)}px`;
+  this.domNodes.element.style.maxHeight=t;…phwrapper…style.maxHeight=t}
+```
+
+and `.body` sits in a `DomScrollableElement` with `alwaysConsumeMouseWheel`. So
+stacking every overload plus the full docstring into one `SignatureInformation`
+costs nothing: the first signature stays at the top and the rest scrolls. That is
+why `overloads` defaults to `all` — a single signature also means no `.multiple`
+class, hence no `1/5` navigation buttons and no 22px controls column.
+
+**7. The hover widget has none of these limits.**
+
+`--vscode-hover-maxWidth` is a real CSS variable, set from
+`_setHoverWidgetMaxDimensions`, and the widget is wrapped in a `ResizableContentWidget`
+whose size is kept in a static (`YE._lastDimensions`) — so a user drag persists
+across hovers. No setting exposes it, but that is what `src/hover.ts` and `alt+h`
+exist for: the parameter hints widget shows the signature, the hover shows the
+prose.
 
 ## Module map
 
@@ -92,6 +113,7 @@ viewport edge. `signatureStyle: compact` and `maxDocLines` exist for this.
 | `src/provider.ts` | The provider: re-entrancy guard, upstream fetch, result assembly. |
 | `src/callsite.ts` | Names the call at the cursor; per-language glob exclusions. |
 | `src/simplify.ts` | Server label → `name(a, b=1)`, annotations stripped. |
+| `src/hover.ts` | `alt+h`: the callee's docs inside its own parentheses. |
 | `src/theme.ts` | Active theme JSON → scope → color map. |
 | `src/tokenize.ts` | Signature label → classified tokens. |
 | `src/render.ts` | Tokens → sanitizer-safe HTML. |

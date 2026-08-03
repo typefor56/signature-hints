@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0
+
+- **`alt+h` now shows documentation** instead of toggling the extension. On a
+  function name it is VS Code's own hover; inside a call's parentheses, where
+  there is normally nothing to hover, the extension supplies the callee's
+  documentation. Press it twice to focus the hover and scroll it from the
+  keyboard. The toggle is still available as a command, just unbound.
+- **One scrollable popup, no navigation buttons.** `overloads` defaults back to
+  `"all"`: first signature at the top, other overloads below it, then the
+  documentation. VS Code caps the widget at `max(editorHeight / 4, 250px)` and
+  makes it scrollable, so nothing is lost by stacking.
+- `maxDocLines` defaults to `0` — the docstring is no longer cropped.
+- `maxOverloads` defaults to `10`.
+
 ## 0.2.0
 
 - **Compact signatures.** `signatureHints.signatureStyle` defaults to `compact`:

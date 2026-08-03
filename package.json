@@ -89,10 +89,10 @@
         },
         "signatureHints.maxDocLines": {
           "type": "number",
-          "default": 12,
+          "default": 0,
           "minimum": 0,
           "scope": "language-overridable",
-          "markdownDescription": "Lines of documentation to keep before truncating with `…`. `0` keeps the whole docstring. Lower this if the popup grows tall enough to jump away from the cursor."
+          "markdownDescription": "Lines of documentation to keep before truncating with `…`. `0` keeps the whole docstring, which is fine because the popup scrolls: VS Code caps it at `max(editorHeight / 4, 250px)` and everything past that is reachable by scrolling."
         },
         "signatureHints.overloads": {
           "type": "string",
@@ -101,16 +101,16 @@
             "active"
           ],
           "enumDescriptions": [
-            "Stack every overload at once, highlighting the active one.",
-            "Show the active overload only, with the built-in 1/2 navigation."
+            "One scrollable popup: first signature at the top, the other overloads and the documentation below it.",
+            "Show the active overload only, with the built-in 1/5 navigation buttons."
           ],
-          "default": "active",
+          "default": "all",
           "scope": "language-overridable",
-          "description": "How to present multiple overloads."
+          "description": "How to present multiple overloads. \"all\" keeps everything in one scrollable popup; \"active\" splits them across the widget's navigation buttons."
         },
         "signatureHints.maxOverloads": {
           "type": "number",
-          "default": 5,
+          "default": 10,
           "minimum": 1,
           "scope": "language-overridable",
           "description": "Maximum overloads rendered when signatureHints.overloads is \"all\"."
@@ -165,8 +165,13 @@
     },
     "commands": [
       {
+        "command": "signatureHints.showDocs",
+        "title": "Show Documentation at Cursor",
+        "category": "Signature Hints"
+      },
+      {
         "command": "signatureHints.toggle",
-        "title": "Toggle",
+        "title": "Toggle On/Off",
         "category": "Signature Hints"
       },
       {
@@ -192,7 +197,7 @@
     ],
     "keybindings": [
       {
-        "command": "signatureHints.toggle",
+        "command": "signatureHints.showDocs",
         "key": "alt+h",
         "when": "editorTextFocus"
       }

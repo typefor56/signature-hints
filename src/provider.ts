@@ -97,10 +97,10 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		mode: Mode,
 		config: vscode.WorkspaceConfiguration,
 	): vscode.SignatureHelp | undefined {
-		const overloads = config.get<Overloads>('overloads', 'active');
+		const overloads = config.get<Overloads>('overloads', 'all');
 		const header = config.get<Header>('header', 'none');
 		const style = config.get<SignatureStyle>('signatureStyle', 'compact');
-		const maxDocLines = config.get<number>('maxDocLines', 12);
+		const maxDocLines = config.get<number>('maxDocLines', 0);
 		const options: RenderOptions = {
 			colors: config.get<'theme' | 'off'>('colors', 'theme'),
 			monospace: config.get<boolean>('monospace', true),
@@ -132,7 +132,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 			return kept.length ? { signatures: kept, activeSignature, activeParameter: 0 } : undefined;
 		}
 
-		const max = Math.max(1, config.get<number>('maxOverloads', 5));
+		const max = Math.max(1, config.get<number>('maxOverloads', 10));
 		const shown = signatures.slice(0, max);
 		let html = shown.map(renderOne).join('<br>');
 		if (signatures.length > shown.length) {
