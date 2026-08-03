@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.15.0
+
+- **Security: a docstring could no longer make the editor fetch a URL.**
+  `supportHtml` is on so the signature can be coloured, and it applies to the
+  whole string — including documentation coming from whatever package is
+  installed. VS Code's sanitizer permits `img`, `video` and `source` over
+  `http`/`https`, so raw HTML in a docstring was live, reachable from a `.pyi`
+  stub without anything being imported. Documentation now has `<` escaped, so the
+  extension's own markup is the only live HTML in the popup.
+- **The call-site scan is bounded in characters**, not just in lines: 30 lines of
+  a minified file can be megabytes, and this runs on cursor movement.
+- Declared `capabilities`: usable in untrusted and virtual workspaces. The
+  extension runs no workspace code, spawns no process, opens no connection and
+  writes no file.
+- Added `SECURITY.md`.
+
 ## 0.14.0
 
 - **Overloads taking the same arguments are shown once.** `range` really has two

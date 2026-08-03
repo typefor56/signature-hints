@@ -6,6 +6,8 @@ per-function exclusions, a choice of signature / doc / both, and a one-key toggl
 Built for Python and Jupyter notebooks first; it works for any language that has
 a signature help provider.
 
+![The signature for range, both overloads](docs/signature_range.png)
+
 ## What it does
 
 | | Built-in parameter hints | Signature Hints |
@@ -37,6 +39,17 @@ This matters most for the scientific stack — numpy, pandas, matplotlib,
 scikit-learn — whose annotations (`_ArrayLike`, `_OrderKACF`,
 `_SupportsArrayFunc | None`) are longer than the parameter names they describe.
 Set it to `full` to get the server's label verbatim.
+
+![np.absolute, compacted](docs/signature_absolute.png)
+
+Overloads that take the same arguments are folded into one. `np.array` declares
+several that differ only in the *types* of theirs — which is what compact mode
+has just hidden — so one line is all there is to say:
+
+![np.array, a single line](docs/signature_array.png)
+
+`range` keeps both of its overloads, because one argument and three really are
+two different calls.
 
 The colors are read from the color theme you actually have active — including
 themes that ship inside VS Code, themes you installed, and any

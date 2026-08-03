@@ -262,6 +262,19 @@ check('comparison in a default is not a split', compactSignature('(a: bool = x >
 check('string label parameters', compactSignature('(a: int, b: str = "z")', [{ label: 'a: int' }, { label: 'b: str = "z"' }], 1).label, '(a, b="z")');
 check('typescript label untouched by name prefixing', compactSignature('(a: number, b?: string[]): void', undefined, 0).label, '(a, b?)');
 
+// ---------- documentation is not live HTML ----------
+console.log('\n== docstring escaping ==');
+// supportHtml is on for the signature's colours, and it applies to the whole
+// string — so a docstring must not be able to bring its own tags.
+const evil = { value: 'See <img src="https://example.invalid/beacon.png"> and <b>bold</b>.' };
+check('markdown docstring tags neutralised', formatDocumentation(evil, 0).includes('<'), false);
+check('markdown docstring text kept', formatDocumentation(evil, 0).includes('&lt;img src="https://example.invalid/beacon.png">'), true);
+check('no tag can open', /<[a-zA-Z/]/.test(formatDocumentation(evil, 0)), false);
+check('plain docstring tags neutralised', formatDocumentation('a <script>x</script> b', 0).includes('<script'), false);
+check('markdown structure survives', formatDocumentation({ value: '# Title\n\n- one\n- two' }, 0).includes('# Title'), true);
+check('fences survive', formatDocumentation({ value: '```py\nx = 1\n```' }, 0), '```py\nx = 1\n```');
+check('blockquote survives', formatDocumentation({ value: '> note' }, 0), '> note  ');
+
 // ---------- identical overloads ----------
 console.log('\n== overload dedupe ==');
 // Overloads are folded on their argument names: what the `...` stand for is the

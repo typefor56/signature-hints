@@ -19,6 +19,13 @@
     "Programming Languages",
     "Other"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true,
+      "description": "Reads the text around the cursor and re-renders what the language server already returns. It runs no workspace code, spawns no process, opens no network connection and writes no file."
+    },
+    "virtualWorkspaces": true
+  },
   "main": "./out/extension.js",
   "activationEvents": [
     "onStartupFinished"

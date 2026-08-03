@@ -161,10 +161,19 @@ export function documentationText(
  * Prepares a docstring for the widget, which sets `white-space: initial` on the
  * docs area — line breaks and indentation are lost unless they survive as HTML.
  *
- * A plain string is escaped and joined with `<br>`. Markdown is left alone
- * except for a trailing double space per line, the markdown hard break, so a
- * numpydoc parameter list does not collapse into one paragraph; lines inside
- * fenced code blocks keep their own whitespace handling and are skipped.
+ * A plain string is escaped and joined with `<br>`. Markdown keeps its
+ * structure, and gains a trailing double space per line — the markdown hard
+ * break — so a numpydoc parameter list does not collapse into one paragraph;
+ * lines inside fenced code blocks keep their own whitespace handling and are
+ * skipped.
+ *
+ * Tags are neutralised either way. The popup's `MarkdownString` carries
+ * `supportHtml` so the *signature* can be colored, and that switch applies to
+ * the whole string — including this documentation, which comes from whatever
+ * package is installed. Escaping `<` here keeps the extension's own markup the
+ * only live HTML in the popup: VS Code's sanitizer permits `img`, `video` and
+ * `source` with `http`/`https` sources, so a docstring would otherwise be able
+ * to make the editor fetch a URL as you type a call.
  */
 export function formatDocumentation(
 	documentation: string | vscode.MarkdownString | undefined,
@@ -186,7 +195,10 @@ export function formatDocumentation(
 	if (isMarkdown) {
 		let fenced = false;
 		out = lines
-			.map((line) => {
+			.map((raw) => {
+				// `<` alone is enough: no tag can open without it, and leaving `>` and
+				// `&` be keeps blockquotes and entities readable.
+				const line = raw.replace(/</g, '&lt;');
 				if (/^\s*```/.test(line)) {
 					fenced = !fenced;
 					return line;
