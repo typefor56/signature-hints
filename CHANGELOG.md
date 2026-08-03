@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0
+
+- **Fixed: `signatureHints.enabled: false` hid the popup entirely** instead of
+  restoring VS Code's built-in parameter hints. It returned an empty result,
+  which is truthy and therefore stopped the provider chain before the language
+  server was reached. It now returns nothing at all, so the chain falls through.
+  `mode: "none"` is the setting that suppresses the popup.
+- **The popup no longer blinks out while you type.** VS Code keeps the previous
+  hints while a request is pending, but hides them when one resolves to nothing —
+  which a language server loaded with typed stubs does now and then. The last
+  good answer per call site is remembered for 30s and replayed instead.
+- The active parameter can now be derived from the call itself, by counting
+  commas at the call's own nesting level, for when a cached answer is used.
+- `mode` defaults to `signature`: the popup stays one line and the documentation
+  is `alt+h` away.
+- `Show Diagnostics` reports upstream latency and the cache size.
+
 ## 0.3.0
 
 - **`alt+h` now shows documentation** instead of toggling the extension. On a

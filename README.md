@@ -53,8 +53,8 @@ offers to turn it on the first time it starts.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `signatureHints.enabled` | `true` | Master switch (command, no key by default). |
-| `signatureHints.mode` | `"both"` | `signature`, `doc`, `both`, `none`. |
+| `signatureHints.enabled` | `true` | Off gives you back VS Code's own parameter hints. |
+| `signatureHints.mode` | `"signature"` | `signature`, `doc`, `both`, `none`. |
 | `signatureHints.signatureStyle` | `"compact"` | `compact` keeps names and defaults; `full` keeps annotations too. |
 | `signatureHints.exclude` | `{"python": ["print"]}` | Calls that never show a popup. |
 | `signatureHints.maxDocLines` | `0` | Lines of docstring before truncating; `0` keeps all of it. |
@@ -118,6 +118,22 @@ reuses that size for every later hover.
 Hovering with the mouse is untouched: the provider only answers when you press
 the key.
 
+To frame it in VS Code's focus blue — the one around a selected notebook cell:
+
+```jsonc
+"workbench.colorCustomizations": { "editorHoverWidget.border": "#0078D4" }
+```
+
+The hover is a shared widget, so this colors mouse hovers too. `#0078D4` is Dark
+Modern's `focusBorder`; use `"editorHoverWidget.border": "#00000000"` to go back.
+
+## Turning it off
+
+`signatureHints.enabled: false` makes the extension **step aside**, so VS Code's
+own parameter hints come back — it is not a way to hide the popup. For that, use
+`signatureHints.mode: "none"`, which suppresses it without touching
+`editor.parameterHints.enabled`.
+
 ## Commands
 
 | Command | Key |
@@ -131,11 +147,9 @@ the key.
 
 ## One scrollable popup
 
-Everything goes into a single popup: the first signature at the top, the other
-overloads under it, then the documentation. No `1/5` `2/5` buttons to click
-through — scroll instead.
-
-That works because VS Code caps the widget and makes it scrollable:
+Every overload goes into a single popup — first signature at the top, the others
+under it. No `1/5` `2/5` buttons to click through; scroll instead. VS Code caps
+the widget and makes it scrollable:
 
 ```js
 updateMaxHeight() {
@@ -144,9 +158,15 @@ updateMaxHeight() {
 }
 ```
 
-So the popup is never taller than a quarter of your editor, whatever is inside
-it, and the rest is one wheel-scroll away. `signatureHints.overloads: "active"`
-brings the navigation buttons back if you prefer them.
+So the popup is never taller than a quarter of your editor, and the rest is one
+wheel-scroll away. `signatureHints.overloads: "active"` brings the navigation
+buttons back if you prefer them.
+
+Note what this does *not* do: the widget's height follows its content, up to that
+cap. It does not start small and expand as you scroll — nothing in VS Code does
+that, and an extension cannot add it. Keeping the popup to one or two lines means
+putting less in it, which is why `mode` defaults to `signature` and the
+documentation lives behind `alt+h`.
 
 ### What cannot be changed
 

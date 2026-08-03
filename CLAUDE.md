@@ -43,7 +43,10 @@ Two consequences the extension relies on:
 
 - Returning `{ signatures: [], activeSignature: 0, activeParameter: 0 }` is truthy,
   so it stops the chain — the language server is never asked. That is how
-  exclusions and the off switch suppress the popup without touching settings.
+  exclusions and `mode: "none"` suppress the popup without touching settings.
+  **`enabled: false` must return `undefined` instead**, or turning the extension
+  off hides parameter hints altogether rather than restoring the built-in ones.
+  That was a real bug.
 - The widget then does `let o = e.signatures[e.activeSignature]; if(!o) return;`,
   so zero signatures renders nothing.
 
@@ -96,7 +99,17 @@ costs nothing: the first signature stays at the top and the rest scrolls. That i
 why `overloads` defaults to `all` — a single signature also means no `.multiple`
 class, hence no `1/5` navigation buttons and no 22px controls column.
 
-**7. The hover widget has none of these limits.**
+**7. Pending keeps the hints, resolved-to-nothing hides them.**
+
+`ParameterHintsModel`'s state is `Default | Active | Pending`, and
+`Pending` carries `previouslyActiveHints`, which the widget keeps rendering. So a
+slow provider is harmless — but a provider that *resolves* to null drops the
+state to `Default` and the popup vanishes mid-typing. Pylance does return nothing
+now and then on typed stubs, hence the 30s per-call-site cache in `provider.ts`:
+on an empty upstream reply the last good answer is replayed rather than passing
+the emptiness through.
+
+**8. The hover widget has none of these limits.**
 
 `--vscode-hover-maxWidth` is a real CSS variable, set from
 `_setHoverWidgetMaxDimensions`, and the widget is wrapped in a `ResizableContentWidget`

@@ -31,7 +31,7 @@
           "type": "boolean",
           "default": true,
           "scope": "language-overridable",
-          "description": "Master switch. Toggled by the Signature Hints: Toggle command (alt+h)."
+          "markdownDescription": "Master switch. When off, the extension steps aside and VS Code's built-in parameter hints come back — it does not hide the popup. Use `signatureHints.mode: \"none\"` for that."
         },
         "signatureHints.mode": {
           "type": "string",
@@ -47,9 +47,9 @@
             "Signature and documentation.",
             "Show nothing (the popup stays hidden)."
           ],
-          "default": "both",
+          "default": "signature",
           "scope": "language-overridable",
-          "description": "What the parameter hints popup shows."
+          "markdownDescription": "What the parameter hints popup shows. It defaults to `signature` so the popup stays as short as possible — VS Code sizes it to its content, so anything extra makes it taller and more likely to be pushed away from the cursor. Read the documentation with `alt+h` instead."
         },
         "signatureHints.signatureStyle": {
           "type": "string",
