@@ -268,6 +268,17 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	}
 
 	/**
+	 * Drops the record of which call the visible popup was built for.
+	 *
+	 * Any edit invalidates it: if we are still in front, VS Code re-queries on the
+	 * content change and we render again immediately; if we are not, the record
+	 * stays cleared, and that is what marks the popup as somebody else's.
+	 */
+	forgetOwnership(): void {
+		this.lastRenderedCall = undefined;
+	}
+
+	/**
 	 * Whether our provider currently comes first for this position.
 	 *
 	 * There is no API for this: the registry's order is not exposed, and a

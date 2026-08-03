@@ -169,12 +169,17 @@ whose size is kept in a static (`YE._lastDimensions`) — so a user drag persist
 across hovers.
 
 `HideHoverAction` is registered `precondition: void 0` with **no `kbOpts`** — it
-has no default keybinding. `Escape` closes the hover through a DOM listener in
-the widget, which does not consume the key, so any other `Escape` binding fires
-too. Harmless in a plain editor; in a notebook `notebook.cell.quitEdit` also runs
-and drops you out of the cell. `package.json` contributes the missing binding
-under `editorHoverVisible && notebookEditorFocused`; extension keybindings
-outrank built-in ones, so it wins. No setting exposes it, but that is what `src/hover.ts` and `alt+h`
+has no default keybinding. `Escape` closes the hover from the controller's
+`_onKeyDown`, an editor-level DOM listener, which does not consume the key: any
+other `Escape` binding fires too. Harmless in a plain editor; in a notebook
+`notebook.cell.quitEdit` also runs and drops you out of the cell.
+
+**Do not bind on `editorHoverVisible`.** That listener runs *before* the
+keybinding service resolves the key, so `_hoverVisibleKey` is already false when
+the `when` clause is evaluated and the binding never matches. That was a real
+bug. The extension sets its own `signatureHints.hoverShown` key, whose lifetime
+it controls: set after `showHover`, cleared on the dismiss command and on any
+cursor move. No setting exposes it, but that is what `src/hover.ts` and `alt+h`
 exist for: the parameter hints widget shows the signature, the hover shows the
 prose.
 
@@ -206,8 +211,20 @@ the *next* trigger; a popup already up was opened by whoever was in front then.
 Typing `(` triggers on the character, before any of this extension's cursor
 handling runs, so a built-in popup can sit there while we are perfectly well
 registered. `provider.lastRenderedCall` records which call our own popup was
-built for; `Reopener` re-triggers when it does not match — throttled, and never
-when it does, which is what keeps `Escape` respected.
+built for, and `Reopener` re-triggers when it does not match, throttled.
+
+That record must be **dropped on every edit**. Keeping it across edits was a bug:
+typing `np.random.rando` then `m(` accepts a completion, which inserts `random()`
+in one edit and triggers hints at once — and the extension still held a record
+from before the deletion, for the very same call site, so it concluded the popup
+was already its own. Clearing on edit is self-correcting: staying in front means
+VS Code re-queries on the content change and we render again immediately.
+
+Re-triggering is then not enough on its own — asking again without re-registering
+just reaches the same provider — so a foreign popup also forces an order check
+past the probe throttle. And because all this re-triggers eagerly, `Escape` needs
+recording: `signatureHints.dismissHints` marks the call site and `Reopener`
+leaves it alone until the cursor leaves.
 
 **Rewriting the label invalidates the server's offsets.**
 `ParameterInformation.label` is usually a `[start, end]` pair into the *original*

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.10.0
+
+- **Fixed: accepting a completion left the built-in popup up.** Typing
+  `np.random.rando` then `m(` quickly accepts the suggestion, which inserts
+  `random()` in one edit and triggers parameter hints immediately. The extension
+  believed the popup was already its own — it had rendered for that same call
+  site before the deletion, and nothing invalidated that. Ownership is now
+  dropped on every edit: if we are still in front, VS Code re-queries on the
+  content change and we render again at once; if we are not, the record stays
+  cleared and the foreign popup is replaced. That evidence also forces a fresh
+  provider-order check past the usual throttle, since re-triggering without
+  re-registering only asks the same provider again.
+- **`Escape` now really keeps you in the notebook cell after `alt+h`.** The 0.8.1
+  fix could not work: the hover hides itself from an editor `_onKeyDown` DOM
+  listener that runs *before* the keybinding service resolves the key, so
+  `editorHoverVisible` was already false when the `when` clause was evaluated.
+  The extension sets its own context key instead, which it controls the lifetime
+  of.
+- **`Escape` on the popup is now remembered.** With the extension re-triggering
+  more eagerly, a popup closed by hand had to stay closed: the call site is
+  recorded as dismissed and left alone until the cursor leaves it.
+
 ## 0.9.0
 
 - **The popup is replaced when it is not ours.** Being in front is not the same

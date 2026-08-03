@@ -90,9 +90,13 @@ class Registration {
 	 *
 	 * Returns true when the lead had to be taken back.
 	 */
-	async reclaim(document: vscode.TextDocument, position: vscode.Position): Promise<boolean> {
+	async reclaim(
+		document: vscode.TextDocument,
+		position: vscode.Position,
+		force = false,
+	): Promise<boolean> {
 		const now = Date.now();
-		if (now - this.lastProbe < PROBE_THROTTLE_MS) {
+		if (!force && now - this.lastProbe < PROBE_THROTTLE_MS) {
 			return false;
 		}
 		this.lastProbe = now;
@@ -159,6 +163,20 @@ const REOPEN_DEBOUNCE_MS = 120;
 const NUDGE_THROTTLE_MS = 1000;
 
 /**
+ * Our own visibility flag for the hover.
+ *
+ * VS Code's `editorHoverVisible` cannot be used in a `when` clause for this: the
+ * hover hides itself from an editor-level `_onKeyDown` DOM listener, which runs
+ * before the keybinding service resolves the key, so the context key has already
+ * flipped to false by the time the clause is evaluated.
+ */
+const HOVER_SHOWN = 'signatureHints.hoverShown';
+
+function setHoverShown(shown: boolean): void {
+	void vscode.commands.executeCommand('setContext', HOVER_SHOWN, shown);
+}
+
+/**
  * Re-opens the popup when the cursor moves back inside a call.
  *
  * VS Code starts parameter hints on the trigger characters `(` and `,`, and
@@ -171,11 +189,19 @@ class Reopener {
 	/** The call last triggered for, so `Escape` is not immediately undone. */
 	private lastCall: string | undefined;
 	private lastNudge = 0;
+	/** Call site the user closed by hand; left alone until the cursor leaves it. */
+	private dismissed: string | undefined;
 
 	constructor(
 		private readonly registration: Registration,
 		private readonly provider: SignatureHintsProvider,
 	) {}
+
+	/** `Escape` on the popup: remember that this one was closed on purpose. */
+	dismiss(editor: vscode.TextEditor | undefined): void {
+		const call = editor && resolveCall(editor.document, editor.selection.active);
+		this.dismissed = call && editor ? callKey(editor.document, call) : undefined;
+	}
 
 	schedule(event: vscode.TextEditorSelectionChangeEvent): void {
 		clearTimeout(this.timer);
@@ -208,16 +234,19 @@ class Reopener {
 		const site = callKey(editor.document, call);
 		const moved = site !== this.lastCall;
 		this.lastCall = site;
-
-		// Take the lead back first, so the trigger below is the one that reaches us.
-		const reclaimed = await this.registration.reclaim(editor.document, position);
+		if (moved) {
+			this.dismissed = undefined;
+		}
+		if (this.dismissed === site) {
+			return;
+		}
 
 		// Being in front is not the same as being on screen. Typing `(` makes VS
-		// Code trigger on the character, so a popup opened by whoever was in front
-		// at that instant stays up until something re-triggers. If we have never
-		// rendered for this call, what is showing is not ours — nudge it, at most
-		// once a second so a language server that genuinely has nothing to say does
-		// not turn into a loop.
+		// Code trigger on the character — and accepting a completion inserts the
+		// whole `random()` at once — so a popup opened by whoever was in front at
+		// that instant stays up until something re-triggers. Ownership is dropped on
+		// every edit, so if this is still ours the popup was re-rendered since;
+		// if it is not, what is showing belongs to someone else.
 		const ours = this.provider.lastRenderedCall === site;
 		const now = Date.now();
 		const nudge = !ours && now - this.lastNudge > NUDGE_THROTTLE_MS;
@@ -225,8 +254,12 @@ class Reopener {
 			this.lastNudge = now;
 		}
 
-		// Moving between arguments of the same call is left alone otherwise: the
-		// popup is either already up, or the user closed it on purpose.
+		// A foreign popup is evidence, not a guess, so it also forces a fresh order
+		// check past the usual throttle — re-triggering without re-registering would
+		// just ask the same provider again.
+		const reclaimed = await this.registration.reclaim(editor.document, position, nudge);
+
+		// Moving between arguments of the same call is left alone otherwise.
 		if (moved || reclaimed || nudge) {
 			void vscode.commands.executeCommand('editor.action.triggerParameterHints');
 		}
@@ -257,7 +290,17 @@ export function activate(context: vscode.ExtensionContext): void {
 		log,
 		registration,
 		reopener,
-		vscode.window.onDidChangeTextEditorSelection((event) => reopener.schedule(event)),
+		vscode.window.onDidChangeTextEditorSelection((event) => {
+			setHoverShown(false);
+			reopener.schedule(event);
+		}),
+		// An edit invalidates whatever is on screen. Staying first means we render
+		// again right away; staying stale means the popup is not ours.
+		vscode.workspace.onDidChangeTextDocument((event) => {
+			if (event.document === vscode.window.activeTextEditor?.document) {
+				provider.forgetOwnership();
+			}
+		}),
 		vscode.extensions.onDidChange(() => {
 			registration.refresh();
 			registration.chase();
@@ -284,6 +327,11 @@ export function activate(context: vscode.ExtensionContext): void {
 		}),
 		vscode.languages.registerHoverProvider(selector(), docs),
 		vscode.commands.registerCommand('signatureHints.showDocs', () => showDocs(docs)),
+		vscode.commands.registerCommand('signatureHints.dismissHover', dismissHover),
+		vscode.commands.registerCommand('signatureHints.dismissHints', async () => {
+			reopener.dismiss(vscode.window.activeTextEditor);
+			await vscode.commands.executeCommand('closeParameterHints');
+		}),
 		vscode.commands.registerCommand('signatureHints.toggle', toggle),
 		vscode.commands.registerCommand('signatureHints.cycleMode', cycleMode),
 		vscode.commands.registerCommand('signatureHints.excludeCallAtCursor', excludeCallAtCursor),
@@ -338,6 +386,17 @@ async function showDocs(docs: CallDocsHoverProvider): Promise<void> {
 	await vscode.commands.executeCommand('closeParameterHints');
 	docs.arm();
 	await vscode.commands.executeCommand('editor.action.showHover');
+	setHoverShown(true);
+}
+
+/**
+ * `Escape` while the `alt+h` hover is up. The hover has already closed itself by
+ * now; the point is to be the command that wins the key, so that in a notebook
+ * `notebook.cell.quitEdit` does not also run and drop you out of the cell.
+ */
+function dismissHover(): void {
+	setHoverShown(false);
+	void vscode.commands.executeCommand('editor.action.hideHover');
 }
 
 async function toggle(): Promise<void> {

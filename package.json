@@ -211,6 +211,16 @@
         "command": "signatureHints.showDiagnostics",
         "title": "Show Diagnostics",
         "category": "Signature Hints"
+      },
+      {
+        "command": "signatureHints.dismissHints",
+        "title": "Dismiss the Popup",
+        "category": "Signature Hints"
+      },
+      {
+        "command": "signatureHints.dismissHover",
+        "title": "Dismiss the Documentation Hover",
+        "category": "Signature Hints"
       }
     ],
     "keybindings": [
@@ -220,9 +230,14 @@
         "when": "editorTextFocus"
       },
       {
-        "command": "editor.action.hideHover",
+        "command": "signatureHints.dismissHints",
         "key": "escape",
-        "when": "editorHoverVisible && notebookEditorFocused"
+        "when": "editorTextFocus && parameterHintsVisible"
+      },
+      {
+        "command": "signatureHints.dismissHover",
+        "key": "escape",
+        "when": "notebookEditorFocused && signatureHints.hoverShown"
       }
     ]
   },
