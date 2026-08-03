@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.17.0
+
+- **Fixed the real cause of the built-in popup appearing: it was being handed
+  the keystroke, not winning a race.** The re-entrancy guard identified our own
+  upstream query by cursor position alone, and that query stays open for as long
+  as the language server takes — seconds on numpy-sized stubs. Any *real* request
+  landing on the same position during that window was waved through to the
+  language server, which rendered it.
+  This is what both previous symptoms were. Up to 0.15.0 the extension
+  re-registered aggressively, which cancelled the intruding popup a moment after
+  it appeared: that was the blink on every comma. 0.16.0 stopped re-registering
+  when the lead was already proven, so the intruding popup simply stayed: that
+  was the alternation. One bug, two faces.
+  `_executeSignatureHelpProvider` hardcodes `triggerKind: 1`, while typing
+  produces `TriggerCharacter` or `ContentChange`, so the kind separates the two
+  for certain. A real request now carries on and is answered from the fetch
+  already in flight for that call site — no second query, no fallthrough.
+- A hard bound on nesting, in case that assumption is ever wrong.
+
+
 ## 0.16.0
 
 - **Fixed: the popup blinked on every comma.** Holding the provider lead, added

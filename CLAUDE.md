@@ -199,10 +199,22 @@ prose.
 ## Four things that will bite you
 
 **Re-entrancy.** `provideSignatureHelp` calls
-`vscode.executeSignatureHelpProvider`, which re-enters this provider. A map keyed
-by `uri|line|character` makes the nested call return `undefined` so the chain
-falls through to the language server. Remove the guard and you get infinite
-recursion. It holds a **count, not a flag**: a fetch abandoned on
+`vscode.executeSignatureHelpProvider`, which re-enters this provider. The nested
+call must return `undefined` so the chain falls through to the language server.
+Remove the guard and you get infinite recursion.
+
+**Position does not identify that call.** Matching on `uri|line|character` alone
+was the single longest-lived bug in this extension. The guard stays set for the
+whole upstream round trip — seconds on numpy stubs — and every real request
+landing on that position was waved through to the language server, which rendered
+it. Both symptoms chased for weeks were this: aggressive re-registration
+cancelled the intruder a moment later (a blink on every comma), and trusting the
+lead let it stay (alternation). The kind separates them —
+`_executeSignatureHelpProvider` hardcodes `triggerKind: 1` while typing produces
+`TriggerCharacter` or `ContentChange` — and a real request is then answered from
+the fetch already in flight for that call site.
+
+The guard also holds a **count, not a flag**: a fetch abandoned on
 `upstreamTimeoutMs` keeps running, so two can overlap at one position, and the
 first to finish would otherwise lift the guard from under the other.
 

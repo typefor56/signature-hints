@@ -28,6 +28,9 @@ function suppressed(): vscode.SignatureHelp {
 const CACHE_TTL_MS = 30_000;
 const CACHE_MAX_ENTRIES = 50;
 
+/** Hard bound on nesting through `executeSignatureHelpProvider`. */
+const MAX_NESTED_FETCHES = 4;
+
 interface CacheEntry {
 	signatures: readonly vscode.SignatureInformation[];
 	activeSignature: number;
@@ -95,8 +98,19 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	): Promise<vscode.SignatureHelp | undefined> {
 		// Our own `executeSignatureHelpProvider` call lands back here; stepping
 		// aside lets it reach the language server underneath.
+		//
+		// The position alone does not identify that call. While a fetch is pending —
+		// seconds, on numpy-sized stubs — VS Code keeps querying, and a *real*
+		// request landing on the same position was being waved through to the
+		// language server too. That is where the built-in popup came from: not from
+		// losing the registration race, but from being handed the keystroke.
+		//
+		// `_executeSignatureHelpProvider` hardcodes `triggerKind: 1`, while typing
+		// produces TriggerCharacter or ContentChange, so the kind tells the two
+		// apart. A real request now carries on and is answered from the fetch
+		// already in flight for this call site.
 		const marker = key(document, position);
-		if (this.passthrough.has(marker)) {
+		if (this.passthrough.has(marker) && context?.triggerKind === vscode.SignatureHelpTriggerKind.Invoke) {
 			this.outcomes.reentrant++;
 			return undefined;
 		}
@@ -308,6 +322,14 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		const existing = site && this.inFlight.get(site);
 		if (existing) {
 			return existing;
+		}
+
+		// Safety net. The trigger kind is what stops a real request from being
+		// mistaken for our own, and if that assumption ever fails this keeps the
+		// mistake from nesting: past a handful of live fetches, answer from the
+		// cache rather than opening another one.
+		if (this.passthrough.size > MAX_NESTED_FETCHES) {
+			return undefined;
 		}
 
 		const marker = key(document, position);
