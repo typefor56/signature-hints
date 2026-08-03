@@ -77,6 +77,7 @@ offers to turn it on the first time it starts.
 | `signatureHints.maxOverloads` | `0` | Cap when stacking; `0` is no cap. |
 | `signatureHints.header` | `"name"` | Content of the plain header line: `none`, `name`, `name+count`. |
 | `signatureHints.colors` | `"theme"` | `off` disables coloring. |
+| `signatureHints.highlightActiveParameter` | `false` | Mark the argument under the cursor. |
 | `signatureHints.monospace` | `true` | Render the signature in the editor font. |
 | `signatureHints.languages` | `["*"]` | Language ids to take over. |
 

@@ -227,9 +227,23 @@ class Reopener {
 			return;
 		}
 		const config = vscode.workspace.getConfiguration('signatureHints', editor.document);
-		if (config.get<boolean>('enabled', true)) {
-			this.registration.reclaim(editor.document);
+		if (!config.get<boolean>('enabled', true)) {
+			return;
 		}
+
+		// Only outside a call. Re-registering cancels whatever the widget is
+		// showing, and inside a call something usually is — that was the single
+		// blink when the popup first appeared: the `(` that opened it also reached
+		// this handler, which re-registered and dismissed it a frame later.
+		//
+		// Nothing is lost by stopping here. The keystrokes that matter are the ones
+		// spent typing the name, before any popup exists, and by the time `(` is
+		// reached the lead has already been taken. Inside a call, the debounced pass
+		// re-registers if it has to, and re-opens the popup itself.
+		if (resolveCall(editor.document, editor.selection.active)) {
+			return;
+		}
+		this.registration.reclaim(editor.document);
 	}
 
 	private run(editor: vscode.TextEditor): void {

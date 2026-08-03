@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.19.0
+
+- **`signatureHints.highlightActiveParameter`**, off by default. The argument
+  under the cursor is no longer shown in bold on a highlighted band; on a line
+  that is already syntax-coloured the band reads as noise. Set it to `true` to
+  bring it back — the position is tracked either way, so it costs nothing.
+- **Fixed the single blink when the popup first appeared.** Holding the provider
+  lead re-registers, and re-registering cancels whatever the widget is showing —
+  including the popup the `(` had just opened, since that keystroke reaches the
+  handler too. The lead is now held only while the cursor is outside a call,
+  which is where it is needed and where nothing can be cancelled: by the time `(`
+  is typed the lead has already been taken during the name.
+
+
 ## 0.18.0
 
 - **The built-in popup can no longer take over. The upstream query now identifies

@@ -254,9 +254,15 @@ the throttled guess suppressed the re-registration that would have fixed it.
 providers the instant it is typed, or the instant `Tab` accepts a completion
 ending in one. Anything that reacts afterwards has already lost that query, and a
 debounced handler does not run at all during a burst. `Reopener.keepLead` runs on
-every selection change and every edit — leading edge, no debounce, and before any
-early return, since the decisive keystrokes are the ones spent typing a bare name
-with no call in sight. Reacting only once the cursor sat inside a call was a bug.
+every selection change and every edit — leading edge, no debounce — since the
+decisive keystrokes are the ones spent typing a bare name with no call in sight.
+Reacting only once the cursor sat inside a call was a bug.
+
+It stops **inside** a call, though: re-registering cancels whatever the widget is
+showing, and the `(` that opens a popup reaches this handler too, so holding the
+lead there dismissed the popup one frame after it appeared. By then the lead has
+already been taken during the name, and the debounced pass re-registers if it
+must — re-opening the popup itself, so nothing blinks.
 
 This is free where it counts. `reclaim` re-registers only when
 `wasCalledFor(document)` is false, and an open popup of ours is re-queried on

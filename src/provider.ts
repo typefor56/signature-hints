@@ -401,9 +401,13 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		const inSignature = header === 'none' ? name : undefined;
 		const text = (signature: vscode.SignatureInformation) =>
 			signatureText(signature, resolved.activeParameter, inSignature, style);
+		// Off by default: the highlight is a coloured band behind one argument, and
+		// on a line that is already syntax-coloured it reads as noise more than as
+		// information.
+		const highlight = config.get<boolean>('highlightActiveParameter', false);
 		const renderOne = (signature: vscode.SignatureInformation) => {
 			const { label: line, active } = text(signature);
-			return renderSignatureHtml(line, active, this.theme, options);
+			return renderSignatureHtml(line, highlight ? active : undefined, this.theme, options);
 		};
 
 		// An overload that takes the same arguments is not an alternative. `range`

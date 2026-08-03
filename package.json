@@ -173,6 +173,12 @@
           "scope": "language-overridable",
           "description": "Syntax coloring of the signature."
         },
+        "signatureHints.highlightActiveParameter": {
+          "type": "boolean",
+          "default": false,
+          "scope": "language-overridable",
+          "markdownDescription": "Mark the argument the cursor is on, in bold on a highlighted band. Off by default: on a line that is already syntax-coloured the band reads as noise. The position is still tracked either way, so turning this on costs nothing."
+        },
         "signatureHints.monospace": {
           "type": "boolean",
           "default": true,
