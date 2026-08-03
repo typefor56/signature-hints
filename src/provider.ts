@@ -203,7 +203,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		config: vscode.WorkspaceConfiguration,
 	): vscode.SignatureHelp | undefined {
 		const overloads = config.get<Overloads>('overloads', 'all');
-		const header = config.get<Header>('header', 'none');
+		const header = config.get<Header>('header', 'name');
 		const style = config.get<SignatureStyle>('signatureStyle', 'compact');
 		const maxDocLines = config.get<number>('maxDocLines', 0);
 		const options: RenderOptions = {
@@ -213,8 +213,12 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 
 		const { signatures, activeSignature, activeParameter } = resolved;
 
+		// The header line is always there and always plain text, so the name goes in
+		// it when it is shown, and into the colored signature when it is not. Either
+		// way it appears exactly once.
+		const inSignature = header === 'none' ? name : undefined;
 		const renderOne = (signature: vscode.SignatureInformation) =>
-			this.renderSignature(signature, activeParameter, name, style, options);
+			this.renderSignature(signature, activeParameter, inSignature, style, options);
 
 		if (overloads === 'active') {
 			const rendered = signatures.map((signature, index) => {
@@ -257,9 +261,9 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	/**
 	 * One signature line: `print(*values, sep=" ", flush=False)`.
 	 *
-	 * The callee's name is prepended because language servers report a label that
-	 * starts at the parenthesis, and reading the name off the popup itself is what
-	 * lets the widget's plain header line be turned off.
+	 * `name` is prepended when the header line is off, because language servers
+	 * report a label that starts at the parenthesis and the name has to come from
+	 * somewhere.
 	 */
 	private renderSignature(
 		signature: vscode.SignatureInformation,

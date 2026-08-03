@@ -133,6 +133,10 @@ async function ensureParameterHintsEnabled(): Promise<void> {
  * how the docstring gets scrolled from the keyboard.
  */
 async function showDocs(docs: CallDocsHoverProvider): Promise<void> {
+	// Both are content widgets anchored to the cursor and they overlap. The
+	// command is guarded by the `parameterHintsVisible` context key, so it is a
+	// no-op when the popup is not up.
+	await vscode.commands.executeCommand('closeParameterHints');
 	docs.arm();
 	await vscode.commands.executeCommand('editor.action.showHover');
 }

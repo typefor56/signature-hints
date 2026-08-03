@@ -77,7 +77,11 @@ extension always sends `parameters: []` because it does its own highlighting.
                                      background: var(--vscode-textCodeBlock-background) }
 ```
 
-The header line always exists — hence `signatureHints.header`. Because
+The header line always exists — `this.domNodes.signature.innerText=""` then
+`T(this.domNodes.signature,FP(".code"))`, unconditionally, plus `has-docs:after`
+once documentation is present. ~13px that no return value collapses, hence
+`signatureHints.header` defaulting to `name`: the space is spent either way.
+Because
 `white-space` is `initial`, line breaks must be `<br>` (or markdown hard breaks,
 two trailing spaces) and indentation must be `&nbsp;`, not `\n` and spaces.
 

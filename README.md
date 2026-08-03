@@ -60,7 +60,7 @@ offers to turn it on the first time it starts.
 | `signatureHints.maxDocLines` | `0` | Lines of docstring before truncating; `0` keeps all of it. |
 | `signatureHints.overloads` | `"all"` | `all` puts everything in one scrollable popup; `active` uses the 1/5 buttons. |
 | `signatureHints.maxOverloads` | `10` | Cap when stacking. |
-| `signatureHints.header` | `"none"` | Content of the plain header line: `none`, `name`, `name+count`. |
+| `signatureHints.header` | `"name"` | Content of the plain header line: `none`, `name`, `name+count`. |
 | `signatureHints.colors` | `"theme"` | `off` disables coloring. |
 | `signatureHints.monospace` | `true` | Render the signature in the editor font. |
 | `signatureHints.languages` | `["*"]` | Language ids to take over. |
@@ -110,6 +110,9 @@ the mouse — and it works from two places:
 - **Inside the call's parentheses**, where there is normally nothing to hover,
   the extension supplies the callee's documentation instead. `np.array(|)` gives
   you `np.array`'s docs.
+
+The parameter hints popup closes first — the two widgets are anchored to the same
+spot and would overlap.
 
 Press `alt+h` **again** to move focus into the hover, then scroll it with the
 arrow keys; `Escape` closes it. Drag its edge once to make it bigger and VS Code
@@ -192,13 +195,26 @@ cursor. Less content keeps it close:
 | `signatureHints.maxDocLines` | `4` keeps only the summary. |
 | `signatureHints.maxOverloads` | Cap the stack. |
 
-## Cosmetic notes
+## The header line
 
-VS Code always reserves a plain, uncolored header line above the documentation
-area, and extensions cannot style or remove it. `signatureHints.header` defaults
-to `"none"`, which leaves it empty — about 12px with a separator rule — because
-the colored signature already starts with the function name. `"name"` fills it
-instead.
+VS Code always draws a plain, uncolored line above the documentation area:
+
+```js
+this.domNodes.signature.innerText = "";
+const n = append(this.domNodes.signature, $(".code"));
+…
+this.domNodes.signature.classList.toggle("has-docs", l);
+```
+
+`.signature` is created unconditionally, gets `padding: 4px 5px`, and a 1px
+separator once there are docs — about 13px whether or not there is anything in
+it. Nothing an extension returns collapses it, and extensions cannot inject CSS
+to hide it. **It cannot be removed.**
+
+Since the space is spent either way, `signatureHints.header` defaults to `"name"`
+and puts the function name there. The name is then dropped from the colored
+signature, so it never appears twice; `"none"` moves it back down and leaves the
+line blank.
 
 With `monospace` on, VS Code draws a background pill behind the signature. To
 remove it:

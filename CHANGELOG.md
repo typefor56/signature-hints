@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0
+
+- `alt+h` closes the parameter hints popup before opening the hover; the two
+  widgets are anchored to the same place and were overlapping.
+- `signatureHints.header` defaults to `"name"`. The header line cannot be
+  removed — `.signature` is created unconditionally and costs ~13px whatever it
+  holds — so it now carries the function name instead of nothing. The name is
+  dropped from the colored signature in that case, so it is never shown twice.
+
 ## 0.4.0
 
 - **Fixed: `signatureHints.enabled: false` hid the popup entirely** instead of

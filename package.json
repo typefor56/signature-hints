@@ -123,13 +123,13 @@
             "name+count"
           ],
           "enumDescriptions": [
-            "Leave the popup's plain header line empty.",
+            "Leave the line empty and put the function name in the colored signature instead.",
             "Show the called function's name.",
             "Show the called function's name and the overload count."
           ],
-          "default": "none",
+          "default": "name",
           "scope": "language-overridable",
-          "description": "Content of the popup's plain (non-colored) header line. The colored signature already starts with the function name, so this is off by default; VS Code always reserves the line, leaving a thin blank strip."
+          "description": "Content of the popup's plain (non-colored) header line. VS Code always draws this line, about 13px whatever it contains, and an extension cannot remove it — so it holds the function name by default rather than nothing. With \"none\" the name moves into the colored signature instead; it is never shown twice."
         },
         "signatureHints.colors": {
           "type": "string",
