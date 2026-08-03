@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ExcludeSetting, excludePatterns, isExcluded, resolveCallName } from './callsite';
+import { CallSite, ExcludeSetting, excludePatterns, isExcluded, resolveCall } from './callsite';
 import { escapeText, formatDocumentation, parameterRange, renderSignatureHtml, RenderOptions } from './render';
 import { compactSignature } from './simplify';
 import { ThemeColors } from './theme';
@@ -12,11 +12,33 @@ type SignatureStyle = 'compact' | 'full';
 /**
  * A truthy result with no signatures. Returning it stops VS Code's provider
  * chain — so the language server never gets asked — and leaves the widget
- * hidden, which is how exclusions and the off switch suppress the popup without
+ * hidden. That is how exclusions and `mode: "none"` suppress the popup without
  * touching the user's settings.
+ *
+ * Note what this is *not* for: `enabled: false` returns `undefined` instead, so
+ * the chain falls through and the built-in parameter hints come back. Turning
+ * the extension off has to mean the popup goes back to normal, not that it
+ * disappears.
  */
 function suppressed(): vscode.SignatureHelp {
 	return { signatures: [], activeSignature: 0, activeParameter: 0 };
+}
+
+/** How long a call site's signatures stay usable after the last successful fetch. */
+const CACHE_TTL_MS = 30_000;
+const CACHE_MAX_ENTRIES = 50;
+
+interface CacheEntry {
+	signatures: readonly vscode.SignatureInformation[];
+	activeSignature: number;
+	at: number;
+}
+
+/** What the popup is built from, whether it came fresh or from the cache. */
+interface Resolved {
+	signatures: readonly vscode.SignatureInformation[];
+	activeSignature: number;
+	activeParameter: number;
 }
 
 /**
@@ -27,6 +49,10 @@ function suppressed(): vscode.SignatureHelp {
 export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	/** Positions currently being resolved upstream, to break the recursion. */
 	private readonly passthrough = new Set<string>();
+	/** Last good answer per call site, so a slow reply does not blank the popup. */
+	private readonly cache = new Map<string, CacheEntry>();
+	/** Milliseconds the last upstream round trip took, for Show Diagnostics. */
+	lastUpstreamMs = -1;
 
 	constructor(
 		private readonly theme: ThemeColors,
@@ -46,26 +72,105 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		}
 
 		const config = vscode.workspace.getConfiguration('signatureHints', document);
+		// Stepping aside, not suppressing: the built-in popup takes over again.
 		if (!config.get<boolean>('enabled', true)) {
-			return suppressed();
+			return undefined;
 		}
-		const mode = config.get<Mode>('mode', 'both');
+		const mode = config.get<Mode>('mode', 'signature');
 		if (mode === 'none') {
 			return suppressed();
 		}
 
-		const name = resolveCallName(document, position);
+		const call = resolveCall(document, position);
 		const exclude = excludePatterns(config.get<ExcludeSetting>('exclude'), document.languageId);
-		if (isExcluded(name, exclude)) {
+		if (isExcluded(call?.name, exclude)) {
 			return suppressed();
 		}
 
+		const started = Date.now();
 		const upstream = await this.fetchUpstream(document, position, context);
-		if (!upstream?.signatures?.length) {
+		this.lastUpstreamMs = Date.now() - started;
+
+		const resolved = this.settle(document, call, upstream);
+		if (!resolved) {
 			return undefined;
 		}
 
-		return this.build(upstream, name, mode, config);
+		return this.build(resolved, call?.name, mode, config);
+	}
+
+	/**
+	 * Picks between the fresh answer and the remembered one.
+	 *
+	 * While a request is pending VS Code keeps showing the previous hints, but a
+	 * request that resolves to nothing hides the widget — and a language server
+	 * loaded with typed stubs does return nothing now and then while you type.
+	 * Replaying the last good answer for the same call site is what keeps the
+	 * popup on screen.
+	 */
+	private settle(
+		document: vscode.TextDocument,
+		call: CallSite | undefined,
+		upstream: vscode.SignatureHelp | undefined,
+	): Resolved | undefined {
+		const key = call && `${document.uri.toString()}|${call.name}|${call.position.line}|${call.position.character}`;
+
+		if (upstream?.signatures?.length) {
+			const activeSignature = clamp(upstream.activeSignature, upstream.signatures.length);
+			if (key) {
+				this.remember(key, upstream.signatures, activeSignature);
+			}
+			return {
+				signatures: upstream.signatures,
+				activeSignature,
+				activeParameter: upstream.activeParameter ?? 0,
+			};
+		}
+
+		const cached = key ? this.recall(key) : undefined;
+		if (!cached) {
+			return undefined;
+		}
+		return {
+			signatures: cached.signatures,
+			activeSignature: cached.activeSignature,
+			// The server is the one that resolves `sep=` by name; without it, fall
+			// back to counting commas.
+			activeParameter: call?.activeParameter ?? 0,
+		};
+	}
+
+	private remember(
+		key: string,
+		signatures: readonly vscode.SignatureInformation[],
+		activeSignature: number,
+	): void {
+		this.cache.delete(key);
+		this.cache.set(key, { signatures, activeSignature, at: Date.now() });
+		while (this.cache.size > CACHE_MAX_ENTRIES) {
+			// Map iterates in insertion order, so this drops the oldest.
+			const oldest = this.cache.keys().next().value;
+			if (oldest === undefined) {
+				break;
+			}
+			this.cache.delete(oldest);
+		}
+	}
+
+	private recall(key: string): CacheEntry | undefined {
+		const entry = this.cache.get(key);
+		if (!entry) {
+			return undefined;
+		}
+		if (Date.now() - entry.at > CACHE_TTL_MS) {
+			this.cache.delete(key);
+			return undefined;
+		}
+		return entry;
+	}
+
+	get cacheSize(): number {
+		return this.cache.size;
 	}
 
 	/** Runs the provider chain again, with this provider disabled for the position. */
@@ -92,7 +197,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	}
 
 	private build(
-		upstream: vscode.SignatureHelp,
+		resolved: Resolved,
 		name: string | undefined,
 		mode: Mode,
 		config: vscode.WorkspaceConfiguration,
@@ -106,9 +211,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 			monospace: config.get<boolean>('monospace', true),
 		};
 
-		const signatures = upstream.signatures;
-		const activeSignature = clamp(upstream.activeSignature, signatures.length);
-		const activeParameter = upstream.activeParameter ?? 0;
+		const { signatures, activeSignature, activeParameter } = resolved;
 
 		const renderOne = (signature: vscode.SignatureInformation) =>
 			this.renderSignature(signature, activeParameter, name, style, options);
