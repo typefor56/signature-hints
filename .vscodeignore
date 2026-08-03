@@ -7,3 +7,4 @@ tsconfig.json
 CLAUDE.md
 **/.gitignore
 **/*.vsix
+releases/**

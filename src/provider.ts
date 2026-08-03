@@ -31,6 +31,16 @@ const CACHE_MAX_ENTRIES = 50;
 /** Hard bound on nesting through `executeSignatureHelpProvider`. */
 const MAX_NESTED_FETCHES = 4;
 
+/**
+ * Marks this extension's own upstream query, as its trigger character.
+ *
+ * A control character cannot be typed, is not among the trigger characters the
+ * provider registers, and reaches the language server only in a request whose
+ * kind is already `Invoke` — where LSP says the trigger character carries no
+ * meaning. So it is invisible to everything except the check above.
+ */
+const NESTED_QUERY = '\u0000signatureHints';
+
 interface CacheEntry {
 	signatures: readonly vscode.SignatureInformation[];
 	activeSignature: number;
@@ -96,21 +106,21 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		_token: vscode.CancellationToken,
 		context: vscode.SignatureHelpContext,
 	): Promise<vscode.SignatureHelp | undefined> {
-		// Our own `executeSignatureHelpProvider` call lands back here; stepping
-		// aside lets it reach the language server underneath.
+		// Our own `executeSignatureHelpProvider` call lands back here, and it is the
+		// only request that may be waved through: whatever falls past this provider
+		// is answered by the language server and rendered raw.
 		//
-		// The position alone does not identify that call. While a fetch is pending —
-		// seconds, on numpy-sized stubs — VS Code keeps querying, and a *real*
-		// request landing on the same position was being waved through to the
-		// language server too. That is where the built-in popup came from: not from
-		// losing the registration race, but from being handed the keystroke.
+		// It identifies itself. `_executeSignatureHelpProvider` copies its third
+		// argument straight into the context it hands to providers —
+		// `{triggerKind: 1, isRetrigger: false, triggerCharacter: o}` — so a
+		// character no keyboard produces is an exact signature.
 		//
-		// `_executeSignatureHelpProvider` hardcodes `triggerKind: 1`, while typing
-		// produces TriggerCharacter or ContentChange, so the kind tells the two
-		// apart. A real request now carries on and is answered from the fetch
-		// already in flight for this call site.
-		const marker = key(document, position);
-		if (this.passthrough.has(marker) && context?.triggerKind === vscode.SignatureHelpTriggerKind.Invoke) {
+		// Position was not: the marker stays set for the whole round trip, seconds
+		// on numpy stubs, and every real request landing there was handed over.
+		// Neither was the trigger kind: the command hardcodes Invoke, but so does
+		// `editor.action.triggerParameterHints`, which this extension calls itself
+		// whenever the cursor settles inside a call.
+		if (context?.triggerCharacter === NESTED_QUERY) {
 			this.outcomes.reentrant++;
 			return undefined;
 		}
@@ -142,7 +152,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 
 		const site = call && callKey(document, call);
 		const started = Date.now();
-		const upstream = await this.race(document, position, context, site, config);
+		const upstream = await this.race(document, position, site, config);
 		this.lastUpstreamMs = Date.now() - started;
 
 		const resolved = this.settle(site, call, upstream);
@@ -183,11 +193,10 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	private async race(
 		document: vscode.TextDocument,
 		position: vscode.Position,
-		context: vscode.SignatureHelpContext,
 		site: string | undefined,
 		config: vscode.WorkspaceConfiguration,
 	): Promise<vscode.SignatureHelp | undefined> {
-		const pending = this.fetchUpstream(document, position, context, site);
+		const pending = this.fetchUpstream(document, position, site);
 		const deadline = config.get<number>('upstreamTimeoutMs', 250);
 		if (deadline <= 0 || !site || !this.recall(site)) {
 			return pending;
@@ -316,7 +325,6 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	async fetchUpstream(
 		document: vscode.TextDocument,
 		position: vscode.Position,
-		context?: vscode.SignatureHelpContext,
 		site?: string,
 	): Promise<vscode.SignatureHelp | undefined> {
 		const existing = site && this.inFlight.get(site);
@@ -344,7 +352,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 					'vscode.executeSignatureHelpProvider',
 					document.uri,
 					position,
-					context?.triggerCharacter,
+					NESTED_QUERY,
 				);
 				if (site && help?.signatures?.length) {
 					this.remember(site, help.signatures, clamp(help.activeSignature, help.signatures.length));

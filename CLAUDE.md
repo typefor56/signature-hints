@@ -203,16 +203,24 @@ prose.
 call must return `undefined` so the chain falls through to the language server.
 Remove the guard and you get infinite recursion.
 
-**Position does not identify that call.** Matching on `uri|line|character` alone
-was the single longest-lived bug in this extension. The guard stays set for the
-whole upstream round trip — seconds on numpy stubs — and every real request
-landing on that position was waved through to the language server, which rendered
-it. Both symptoms chased for weeks were this: aggressive re-registration
-cancelled the intruder a moment later (a blink on every comma), and trusting the
-lead let it stay (alternation). The kind separates them —
-`_executeSignatureHelpProvider` hardcodes `triggerKind: 1` while typing produces
-`TriggerCharacter` or `ContentChange` — and a real request is then answered from
-the fetch already in flight for that call site.
+**The nested call must identify itself, not be guessed at.** Anything waved past
+this provider is answered by the language server and rendered raw, so a wrong
+guess *is* the bug where the built-in popup appears. Two guesses failed:
+
+- **Position.** The marker stays set for the whole round trip — seconds on numpy
+  stubs — so every real request landing there was handed over.
+- **Trigger kind.** `_executeSignatureHelpProvider` hardcodes `Invoke`, but so
+  does `editor.action.triggerParameterHints`, which `Reopener` calls on every
+  settled cursor. The most common case was exactly the one it missed.
+
+The command copies its third argument into the context it hands providers —
+`{triggerKind:1,isRetrigger:!1,triggerCharacter:o}` — so `NESTED_QUERY`, a
+control character, is an exact marker. A control character is not typeable, is
+not one of the registered trigger characters, and reaches the server only inside
+an `Invoke` request, where LSP gives the trigger character no meaning.
+
+Everything else is answered from the fetch already in flight for that call site,
+or from cache. Nothing else falls through.
 
 The guard also holds a **count, not a flag**: a fetch abandoned on
 `upstreamTimeoutMs` keeps running, so two can overlap at one position, and the

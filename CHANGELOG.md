@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.18.0
+
+- **The built-in popup can no longer take over. The upstream query now identifies
+  itself.** Everything that falls past this provider is answered by the language
+  server and rendered raw, so the only request allowed through must be the
+  extension's own — and until now it was recognised by guesswork.
+  By cursor position (up to 0.16.0): the marker stays set for the whole round
+  trip, seconds on numpy stubs, so every real request landing on that position
+  was handed over. By trigger kind (0.17.0): the command hardcodes `Invoke`, but
+  so does `editor.action.triggerParameterHints`, which this extension calls
+  itself every time the cursor settles inside a call — so the fix missed the most
+  common case, which is why nothing changed.
+  `_executeSignatureHelpProvider` copies its third argument straight into the
+  context it gives providers, so the query now carries a control character as its
+  trigger character. Nothing else can produce it. Everything else is answered
+  from the fetch already in flight, or from cache, and never handed over.
+- `releases/signature-hints-0.15.0.vsix` is kept in the repository as the v1
+  fallback.
+
+
 ## 0.17.0
 
 - **Fixed the real cause of the built-in popup appearing: it was being handed
