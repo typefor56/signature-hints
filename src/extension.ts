@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { resolveCallName } from './callsite';
+import { ExcludeSetting, excludePatterns, resolveCallName } from './callsite';
 import { SignatureHintsProvider } from './provider';
 import { ThemeColors } from './theme';
 
@@ -127,7 +127,7 @@ async function toggle(): Promise<void> {
 
 async function cycleMode(): Promise<void> {
 	const config = vscode.workspace.getConfiguration('signatureHints');
-	const current = config.get<Mode>('mode', 'signature');
+	const current = config.get<Mode>('mode', 'both');
 	const next = MODE_CYCLE[(MODE_CYCLE.indexOf(current) + 1) % MODE_CYCLE.length]!;
 	await config.update('mode', next, vscode.ConfigurationTarget.Global);
 	vscode.window.setStatusBarMessage(`Signature Hints: ${next}`, 2000);
@@ -143,14 +143,22 @@ async function excludeCallAtCursor(): Promise<void> {
 		vscode.window.showWarningMessage('Signature Hints: no call found at the cursor.');
 		return;
 	}
+	const language = editor.document.languageId;
 	const config = vscode.workspace.getConfiguration('signatureHints', editor.document);
-	const exclude = config.get<string[]>('exclude', []);
-	if (exclude.includes(name)) {
+	const setting = config.get<ExcludeSetting>('exclude') ?? {};
+
+	if (excludePatterns(setting, language).includes(name)) {
 		vscode.window.setStatusBarMessage(`Signature Hints: ${name} is already excluded`, 2000);
 		return;
 	}
-	await config.update('exclude', [...exclude, name], vscode.ConfigurationTarget.Global);
-	vscode.window.setStatusBarMessage(`Signature Hints: excluded ${name}`, 2000);
+
+	// Whichever shape the user already writes is the shape we keep.
+	const next: ExcludeSetting = Array.isArray(setting)
+		? [...setting, name]
+		: { ...setting, [language]: [...((setting as Record<string, string[]>)[language] ?? []), name] };
+
+	await config.update('exclude', next, vscode.ConfigurationTarget.Global);
+	vscode.window.setStatusBarMessage(`Signature Hints: excluded ${name} for ${language}`, 2000);
 }
 
 const PROBE_SCOPES = [
