@@ -47,8 +47,13 @@ interface Resolved {
  * only part of the built-in widget that goes through the markdown renderer.
  */
 export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
-	/** Positions currently being resolved upstream, to break the recursion. */
-	private readonly passthrough = new Set<string>();
+	/** Positions being resolved upstream, counted, to break the recursion. */
+	private readonly passthrough = new Map<string, number>();
+	/** One upstream request per call site. */
+	private readonly inFlight = new Map<string, Promise<vscode.SignatureHelp | undefined>>();
+	/** The call site the popup currently on screen was built for, and when. */
+	lastRenderedCall: string | undefined;
+	lastRenderedAt = 0;
 	/** Last good answer per call site, so a slow reply does not blank the popup. */
 	private readonly cache = new Map<string, CacheEntry>();
 	/** Milliseconds the last upstream round trip took, for Show Diagnostics. */
@@ -126,11 +131,12 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 			return suppressed();
 		}
 
+		const site = call && callKey(document, call);
 		const started = Date.now();
-		const upstream = await this.fetchUpstream(document, position, context);
+		const upstream = await this.race(document, position, context, site, config);
 		this.lastUpstreamMs = Date.now() - started;
 
-		const resolved = this.settle(document, call, upstream);
+		const resolved = this.settle(site, call, upstream);
 		if (!resolved) {
 			this.outcomes.nothingUpstream++;
 			this.trace(config, `nothing upstream for ${call?.name ?? '(no call)'} after ${this.lastUpstreamMs}ms`);
@@ -140,12 +146,49 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		const built = this.build(resolved, call?.name, mode, config);
 		if (built) {
 			this.outcomes.rendered++;
+			// Which call the popup on screen belongs to. Without this the extension
+			// cannot tell its own popup from the language server's, and so cannot
+			// know whether re-triggering would fix a stale one or fight an Escape.
+			this.lastRenderedCall = site;
+			this.lastRenderedAt = Date.now();
 			this.trace(config, `rendered ${call?.name ?? '?'} (${resolved.signatures.length} sig, ${this.lastUpstreamMs}ms)`);
 		} else {
 			this.outcomes.empty++;
 			this.trace(config, `built nothing for ${call?.name ?? '?'}`);
 		}
 		return built;
+	}
+
+	/**
+	 * The upstream answer, or nothing if it takes too long.
+	 *
+	 * Typed stubs the size of numpy's ufuncs take seconds to resolve the first
+	 * time, and the popup cannot wait for that on every keystroke. Past the
+	 * deadline the cached answer for this call site is used instead and the fetch
+	 * is left running, so it lands in the cache for the next keystroke.
+	 */
+	private async race(
+		document: vscode.TextDocument,
+		position: vscode.Position,
+		context: vscode.SignatureHelpContext,
+		site: string | undefined,
+		config: vscode.WorkspaceConfiguration,
+	): Promise<vscode.SignatureHelp | undefined> {
+		const pending = this.fetchUpstream(document, position, context, site);
+		const deadline = config.get<number>('upstreamTimeoutMs', 250);
+		if (deadline <= 0 || !site || !this.recall(site)) {
+			return pending;
+		}
+
+		let timer: ReturnType<typeof setTimeout>;
+		const expired = new Promise<undefined>((resolve) => {
+			timer = setTimeout(() => resolve(undefined), deadline);
+		});
+		try {
+			return await Promise.race([pending, expired]);
+		} finally {
+			clearTimeout(timer!);
+		}
 	}
 
 	private trace(config: vscode.WorkspaceConfiguration, message: string): void {
@@ -164,17 +207,12 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	 * popup on screen.
 	 */
 	private settle(
-		document: vscode.TextDocument,
+		site: string | undefined,
 		call: CallSite | undefined,
 		upstream: vscode.SignatureHelp | undefined,
 	): Resolved | undefined {
-		const key = call && `${document.uri.toString()}|${call.name}|${call.position.line}|${call.position.character}`;
-
 		if (upstream?.signatures?.length) {
 			const activeSignature = clamp(upstream.activeSignature, upstream.signatures.length);
-			if (key) {
-				this.remember(key, upstream.signatures, activeSignature);
-			}
 			return {
 				signatures: upstream.signatures,
 				activeSignature,
@@ -182,7 +220,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 			};
 		}
 
-		const cached = key ? this.recall(key) : undefined;
+		const cached = site ? this.recall(site) : undefined;
 		if (!cached) {
 			return undefined;
 		}
@@ -261,27 +299,62 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		return probe.reached;
 	}
 
-	/** Runs the provider chain again, with this provider disabled for the position. */
+	/**
+	 * Runs the provider chain again, with this provider disabled for the position.
+	 *
+	 * One fetch per call site at a time: a fetch abandoned on the deadline keeps
+	 * running, and the next keystroke must join it rather than pile another query
+	 * onto a language server that is already the slow part.
+	 */
 	async fetchUpstream(
 		document: vscode.TextDocument,
 		position: vscode.Position,
 		context?: vscode.SignatureHelpContext,
+		site?: string,
 	): Promise<vscode.SignatureHelp | undefined> {
-		const marker = key(document, position);
-		this.passthrough.add(marker);
-		try {
-			return await vscode.commands.executeCommand<vscode.SignatureHelp | undefined>(
-				'vscode.executeSignatureHelpProvider',
-				document.uri,
-				position,
-				context?.triggerCharacter,
-			);
-		} catch (error) {
-			this.log.appendLine(`[upstream] ${String(error)}`);
-			return undefined;
-		} finally {
-			this.passthrough.delete(marker);
+		const existing = site && this.inFlight.get(site);
+		if (existing) {
+			return existing;
 		}
+
+		const marker = key(document, position);
+		// A count, not a flag: two fetches can overlap at one position once a
+		// timed-out one is left running, and the first to finish must not lift the
+		// guard from under the other — that is unbounded recursion.
+		this.passthrough.set(marker, (this.passthrough.get(marker) ?? 0) + 1);
+
+		const request = (async () => {
+			try {
+				const help = await vscode.commands.executeCommand<vscode.SignatureHelp | undefined>(
+					'vscode.executeSignatureHelpProvider',
+					document.uri,
+					position,
+					context?.triggerCharacter,
+				);
+				if (site && help?.signatures?.length) {
+					this.remember(site, help.signatures, clamp(help.activeSignature, help.signatures.length));
+				}
+				return help;
+			} catch (error) {
+				this.log.appendLine(`[upstream] ${String(error)}`);
+				return undefined;
+			} finally {
+				const depth = (this.passthrough.get(marker) ?? 1) - 1;
+				if (depth > 0) {
+					this.passthrough.set(marker, depth);
+				} else {
+					this.passthrough.delete(marker);
+				}
+				if (site) {
+					this.inFlight.delete(site);
+				}
+			}
+		})();
+
+		if (site) {
+			this.inFlight.set(site, request);
+		}
+		return request;
 	}
 
 	private build(
@@ -418,6 +491,11 @@ function clamp(index: number | undefined, length: number): number {
 		return 0;
 	}
 	return index;
+}
+
+/** Identifies a call site, stable while the cursor moves through its arguments. */
+export function callKey(document: vscode.TextDocument, call: CallSite): string {
+	return `${document.uri.toString()}|${call.name}|${call.position.line}|${call.position.character}`;
 }
 
 function key(document: vscode.TextDocument, position: vscode.Position): string {

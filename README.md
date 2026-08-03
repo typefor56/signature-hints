@@ -58,6 +58,7 @@ offers to turn it on the first time it starts.
 | `signatureHints.reopenInsideCalls` | `true` | Re-open the popup when the cursor moves back between the parentheses. |
 | `signatureHints.signatureStyle` | `"compact"` | `compact` keeps names and defaults; `full` keeps annotations too. |
 | `signatureHints.exclude` | `{"python": ["print"]}` | Calls that never show a popup. |
+| `signatureHints.upstreamTimeoutMs` | `250` | Wait before falling back to the last remembered answer. |
 | `signatureHints.maxDocLines` | `0` | Lines of docstring before truncating; `0` keeps all of it. |
 | `signatureHints.overloads` | `"all"` | `all` puts everything in one scrollable popup; `active` uses the 1/5 buttons. |
 | `signatureHints.maxOverloads` | `10` | Cap when stacking. |

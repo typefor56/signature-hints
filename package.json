@@ -171,6 +171,13 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Log every signature help call and how it ended to the Signature Hints output channel. Use it when the built-in popup shows instead of this one: no line at all means the language server is ahead in the provider order, a line means we were reached and something else is wrong."
+        },
+        "signatureHints.upstreamTimeoutMs": {
+          "type": "number",
+          "default": 250,
+          "minimum": 0,
+          "scope": "language-overridable",
+          "markdownDescription": "How long to wait for the language server before falling back to the last answer remembered for this call. Typed stubs the size of numpy's ufuncs take seconds to resolve the first time, and the popup cannot wait for that on every keystroke — the fetch is left running so the next keystroke gets the fresh result. `0` always waits."
         }
       }
     },

@@ -191,13 +191,23 @@ prose.
 | `src/tokenize.ts` | Signature label → classified tokens. |
 | `src/render.ts` | Tokens → sanitizer-safe HTML. |
 
-## Three things that will bite you
+## Four things that will bite you
 
 **Re-entrancy.** `provideSignatureHelp` calls
-`vscode.executeSignatureHelpProvider`, which re-enters this provider. A `Set`
-keyed by `uri|line|character` makes the nested call return `undefined` so the
-chain falls through to the language server. Remove the guard and you get infinite
-recursion.
+`vscode.executeSignatureHelpProvider`, which re-enters this provider. A map keyed
+by `uri|line|character` makes the nested call return `undefined` so the chain
+falls through to the language server. Remove the guard and you get infinite
+recursion. It holds a **count, not a flag**: a fetch abandoned on
+`upstreamTimeoutMs` keeps running, so two can overlap at one position, and the
+first to finish would otherwise lift the guard from under the other.
+
+**Being in front is not being on screen.** The provider order decides who answers
+the *next* trigger; a popup already up was opened by whoever was in front then.
+Typing `(` triggers on the character, before any of this extension's cursor
+handling runs, so a built-in popup can sit there while we are perfectly well
+registered. `provider.lastRenderedCall` records which call our own popup was
+built for; `Reopener` re-triggers when it does not match — throttled, and never
+when it does, which is what keeps `Escape` respected.
 
 **Rewriting the label invalidates the server's offsets.**
 `ParameterInformation.label` is usually a `[start, end]` pair into the *original*

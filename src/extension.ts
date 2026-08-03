@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ExcludeSetting, excludePatterns, isExcluded, resolveCall, resolveCallName } from './callsite';
 import { CallDocsHoverProvider } from './hover';
-import { SignatureHintsProvider } from './provider';
+import { callKey, SignatureHintsProvider } from './provider';
 import { ThemeColors } from './theme';
 
 type Mode = 'signature' | 'doc' | 'both' | 'none';
@@ -155,6 +155,9 @@ class Registration {
 /** Settles before probing the call site, so held arrow keys cost one check. */
 const REOPEN_DEBOUNCE_MS = 120;
 
+/** Minimum gap between two attempts to replace a popup that is not ours. */
+const NUDGE_THROTTLE_MS = 1000;
+
 /**
  * Re-opens the popup when the cursor moves back inside a call.
  *
@@ -167,8 +170,12 @@ class Reopener {
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	/** The call last triggered for, so `Escape` is not immediately undone. */
 	private lastCall: string | undefined;
+	private lastNudge = 0;
 
-	constructor(private readonly registration: Registration) {}
+	constructor(
+		private readonly registration: Registration,
+		private readonly provider: SignatureHintsProvider,
+	) {}
 
 	schedule(event: vscode.TextEditorSelectionChangeEvent): void {
 		clearTimeout(this.timer);
@@ -198,18 +205,29 @@ class Reopener {
 			return;
 		}
 
-		// Moving between arguments of the same call is left alone: the popup is
-		// either already up, or the user closed it on purpose.
-		const key = `${call.name}|${call.position.line}|${call.position.character}`;
-		const moved = key !== this.lastCall;
-		this.lastCall = key;
+		const site = callKey(editor.document, call);
+		const moved = site !== this.lastCall;
+		this.lastCall = site;
 
 		// Take the lead back first, so the trigger below is the one that reaches us.
-		// Re-opening after a reclaim matters as much as after a move: typing `(`
-		// back into `range()` makes VS Code trigger on the character, and whoever
-		// is in front at that instant answers.
 		const reclaimed = await this.registration.reclaim(editor.document, position);
-		if (moved || reclaimed) {
+
+		// Being in front is not the same as being on screen. Typing `(` makes VS
+		// Code trigger on the character, so a popup opened by whoever was in front
+		// at that instant stays up until something re-triggers. If we have never
+		// rendered for this call, what is showing is not ours — nudge it, at most
+		// once a second so a language server that genuinely has nothing to say does
+		// not turn into a loop.
+		const ours = this.provider.lastRenderedCall === site;
+		const now = Date.now();
+		const nudge = !ours && now - this.lastNudge > NUDGE_THROTTLE_MS;
+		if (nudge) {
+			this.lastNudge = now;
+		}
+
+		// Moving between arguments of the same call is left alone otherwise: the
+		// popup is either already up, or the user closed it on purpose.
+		if (moved || reclaimed || nudge) {
 			void vscode.commands.executeCommand('editor.action.triggerParameterHints');
 		}
 	}
@@ -233,7 +251,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	// Hovers from every provider are shown together, so this one needs no
 	// priority games — unlike signature help, which stops at the first result.
 	const docs = new CallDocsHoverProvider();
-	const reopener = new Reopener(registration);
+	const reopener = new Reopener(registration, provider);
 
 	context.subscriptions.push(
 		log,

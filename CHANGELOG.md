@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.0
+
+- **The popup is replaced when it is not ours.** Being in front is not the same
+  as being on screen: typing `(` makes VS Code trigger on the character, so a
+  popup opened by whoever was in front at that instant stays up until something
+  re-triggers it. Until now the extension only re-triggered when the cursor moved
+  to a different call or when priority had to be reclaimed, so a stale built-in
+  popup could sit there. The popup now carries the call it was built for, and one
+  that is not ours gets replaced — at most once a second, so a language server
+  with genuinely nothing to say does not turn into a loop. Pressing `Escape` on
+  our own popup still keeps it closed.
+- **`signatureHints.upstreamTimeoutMs`** (250ms). Numpy's ufunc stubs take
+  seconds to resolve the first time. Past the deadline the answer remembered for
+  that call is shown immediately and the fetch is left running, so the next
+  keystroke has the fresh one. The highlight still follows the argument you are
+  on, since that is counted from the call itself rather than asked for.
+- Fixed a latent recursion guard bug: the guard was a flag, but two upstream
+  fetches can now overlap at one position, and the first to finish would lift the
+  guard from under the other. It counts instead. Only one fetch per call site runs
+  at a time.
+
 ## 0.8.1
 
 - **`Escape` closes the `alt+h` hover without leaving the notebook cell.**
