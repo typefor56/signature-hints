@@ -1,7 +1,8 @@
 # Signature Hints
 
-Parameter hints that behave. Theme-matched syntax highlighting on the signature,
-per-function exclusions, a choice of signature / doc / both, and a one-key toggle.
+Parameter hints that behave. Names and defaults instead of type annotations,
+syntax-coloured from your active theme, per-language exclusions, and `alt+h` for
+the full documentation in a window big enough to read it.
 
 Built for Python and Jupyter notebooks first; it works for any language that has
 a signature help provider.
@@ -16,8 +17,8 @@ a signature help provider.
 | Signature shown | whatever the stub says, annotations and all | names and defaults only |
 | Silence a function | impossible | `signatureHints.exclude` |
 | Signature vs docs | always both | `signature` / `doc` / `both` / `none` |
-| Turn it off | dig through settings | `alt+h` |
-| Overloads | one at a time, 1/2 navigation | all stacked, or one at a time |
+| Reading the docs | scroll a 440px popup | `alt+h`, in the resizable hover |
+| Overloads | one at a time, 1/2 navigation | stacked, with repeats folded away |
 
 ### Compact signatures
 

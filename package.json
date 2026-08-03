@@ -1,7 +1,7 @@
 {
   "name": "signature-hints",
   "displayName": "Signature Hints",
-  "description": "Parameter hints with theme-matched syntax highlighting, per-function exclusions, signature/doc modes and a one-key toggle.",
+  "description": "Readable parameter hints: names and defaults instead of type annotations, syntax-coloured from your theme, per-language exclusions, and alt+h for the full documentation.",
   "version": "0.19.0",
   "publisher": "for56",
   "license": "MIT",
@@ -19,6 +19,7 @@
     "signature help",
     "python",
     "jupyter",
+    "numpy",
     "syntax highlighting"
   ],
   "engines": {
