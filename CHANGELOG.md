@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.13.0
+
+- **Fixed for real: the built-in popup won whenever you typed at speed.** Two
+  gaps, both in the same place. The cursor handler returned early when there was
+  no call yet — so while typing `np.zeros_like`, the moment that decides
+  everything, the provider order was never checked. And it was debounced by
+  120ms, so during a fast burst it did not run at all before the `(` landed.
+  Reacting cannot work here: `(` is a trigger character, so VS Code queries
+  providers the instant it is typed, or the instant `Tab` accepts a completion
+  ending in one, and whoever is in front at that moment answers. The lead is now
+  held continuously — checked on every cursor move and every edit, including the
+  ones spent typing a bare name — instead of being chased after it is lost.
+  This is free where it matters: the check re-registers only when the chain has
+  not reached us for the current revision, and a popup of ours is re-queried on
+  every edit, so nothing happens at all while one is showing.
+
 ## 0.12.0
 
 - **The built-in popup can no longer appear once this extension is reached.**

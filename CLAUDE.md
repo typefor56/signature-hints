@@ -230,6 +230,20 @@ Gating it on "does the popup look like ours" instead was a bug: every `,` is a
 trigger character, so comma spam handed the popup back on each keystroke while
 the throttled guess suppressed the re-registration that would have fixed it.
 
+**Hold the lead, do not chase it.** `(` is a trigger character: VS Code queries
+providers the instant it is typed, or the instant `Tab` accepts a completion
+ending in one. Anything that reacts afterwards has already lost that query, and a
+debounced handler does not run at all during a burst. `Reopener.keepLead` runs on
+every selection change and every edit — leading edge, no debounce, and before any
+early return, since the decisive keystrokes are the ones spent typing a bare name
+with no call in sight. Reacting only once the cursor sat inside a call was a bug.
+
+This is free where it counts. `reclaim` re-registers only when
+`wasCalledFor(document)` is false, and an open popup of ours is re-queried on
+every content change — so while one is showing the answer is true and nothing
+happens. The churn is confined to the case where no popup is up, which is exactly
+when re-registering cancels nothing.
+
 **Do not probe the order by running the chain.** An earlier attempt did, keyed by
 cursor position — which is exactly where VS Code sends real requests, so a
 keystroke arriving during a probe was answered by the probe and the popup went

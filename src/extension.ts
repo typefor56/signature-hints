@@ -184,8 +184,36 @@ class Reopener {
 	}
 
 	schedule(event: vscode.TextEditorSelectionChangeEvent): void {
+		// Leading edge, every time, before anything else can return early.
+		this.keepLead(event.textEditor);
 		clearTimeout(this.timer);
 		this.timer = setTimeout(() => this.run(event.textEditor), REOPEN_DEBOUNCE_MS);
+	}
+
+	/**
+	 * Stays in front while typing, rather than reacting once the lead is lost.
+	 *
+	 * Reacting cannot work here. `(` is a trigger character, so VS Code queries
+	 * providers the instant it is typed — or the instant `Tab` accepts a
+	 * completion that ends in one — and whoever is in front at that moment
+	 * answers. Anything of ours that runs afterwards is already too late, and
+	 * during a fast burst the debounced pass below does not run at all before the
+	 * `(` lands. The only way to win that query is to have been in front before it
+	 * happened, which means checking on every cursor move, including the ones
+	 * spent typing the name with no call in sight.
+	 *
+	 * It is cheap and it cannot disturb anything: `reclaim` re-registers only when
+	 * the chain has not reached us for this revision, and a popup of ours is
+	 * re-queried on every edit — so when one is showing, this does nothing at all.
+	 */
+	keepLead(editor: vscode.TextEditor): void {
+		if (editor !== vscode.window.activeTextEditor) {
+			return;
+		}
+		const config = vscode.workspace.getConfiguration('signatureHints', editor.document);
+		if (config.get<boolean>('enabled', true)) {
+			this.registration.reclaim(editor.document);
+		}
 	}
 
 	private run(editor: vscode.TextEditor): void {
@@ -274,8 +302,10 @@ export function activate(context: vscode.ExtensionContext): void {
 		// An edit invalidates whatever is on screen. Staying first means we render
 		// again right away; staying stale means the popup is not ours.
 		vscode.workspace.onDidChangeTextDocument((event) => {
-			if (event.document === vscode.window.activeTextEditor?.document) {
+			const editor = vscode.window.activeTextEditor;
+			if (event.document === editor?.document) {
 				provider.forgetOwnership();
+				reopener.keepLead(editor);
 			}
 		}),
 		vscode.extensions.onDidChange(() => {

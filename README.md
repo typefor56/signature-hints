@@ -298,6 +298,12 @@ Two consequences worth knowing:
   `python.analysis.*` settings and not one that turns signature help off. The
   only lever anyone has is registration order, which is why this extension
   bothers with it at all.
+- **Holding the lead.** `(` is a trigger character, so VS Code asks providers the
+  instant it is typed — or the instant `Tab` accepts a completion ending in one.
+  Reacting after that is too late, so the extension keeps its registration newest
+  continuously, checked on every cursor move and edit. It re-registers only when
+  the chain has not reached it for the current revision, which is never true while
+  its own popup is up, so this costs nothing during normal use.
 - **Provider order.** VS Code orders equally-scored providers newest-first, so
   whoever registers last wins, and a provider that is not first is simply never
   called. Pylance registers when its language server finishes starting — often
