@@ -272,6 +272,11 @@ built-in popup that goes through VS Code's markdown renderer.
 
 Two consequences worth knowing:
 
+- **The language server cannot be switched off.** VS Code has no API to disable
+  another extension's provider, and Pylance has no setting for it either — 86
+  `python.analysis.*` settings and not one that turns signature help off. The
+  only lever anyone has is registration order, which is why this extension
+  bothers with it at all.
 - **Provider order.** VS Code orders equally-scored providers newest-first, so
   whoever registers last wins, and a provider that is not first is simply never
   called. Pylance registers when its language server finishes starting — often

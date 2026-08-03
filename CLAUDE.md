@@ -81,9 +81,14 @@ Two things make this harder than it looks:
   extension restarts its language server (interpreter resolution, config changes,
   analysis settling) and each restart re-registers Pylance as the newest, so it
   takes the lead back and our provider is never called again. `lastServed` is a
-  timestamp, and `reclaimIfStale` re-registers when the cursor enters a call and
-  we have not been reached for 5s — the one moment where re-registering costs
-  nothing, since no popup is open to cancel.
+  timestamp, and priority is reclaimed whenever the cursor settles inside a call.
+  **Do not guess from elapsed time** — that was the second bug. Retyping `(` in
+  `range()` makes VS Code trigger on the character, so whoever is in front at
+  that instant answers, and "we were called 300ms ago" says nothing about who
+  that is. `provider.isFirst` measures it: set a probe key, run
+  `executeSignatureHelpProvider`, see whether we are reached. The probe returns a
+  truthy empty result, which stops the chain at us — so checking costs no
+  language server query while we are winning.
 - **Losing and returning nothing look identical.** Both leave the built-in popup
   on screen. `signatureHints.trace` and `provider.outcomes` are what separate
   them; without those the only honest answer is "I don't know which".

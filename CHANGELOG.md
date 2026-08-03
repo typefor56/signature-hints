@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.0
+
+- **Provider order is now measured, not assumed.** 0.7.1 reclaimed priority based
+  on how long ago our provider had last been called, which missed the case that
+  matters: deleting and retyping `(` in `range()` makes VS Code trigger on the
+  character itself, so whoever is in front at that instant answers, and a guess
+  based on elapsed time says nothing about who that is.
+  `provider.isFirst` runs the provider chain and watches whether we are reached —
+  the only way to know, since the registry's order is not exposed and a provider
+  that is not first is never called. The probe stops the chain at us, so it costs
+  no language server query while we are winning. The check runs each time the
+  cursor settles inside a call, at most once a second, and the popup is re-opened
+  whenever the lead had to be taken back.
+
 ## 0.7.1
 
 - **Fixed: the built-in popup took the lead back for good.** Winning the

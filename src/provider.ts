@@ -72,7 +72,10 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		fromCache: 0,
 		rendered: 0,
 		empty: 0,
+		probesLost: 0,
 	};
+	/** Set while `isFirst` is running; see there. */
+	private probe: { key: string; reached: boolean } | undefined;
 
 	constructor(
 		private readonly theme: ThemeColors,
@@ -87,7 +90,15 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	): Promise<vscode.SignatureHelp | undefined> {
 		// Our own `executeSignatureHelpProvider` call lands back here; stepping
 		// aside lets it reach the language server underneath.
-		if (this.passthrough.has(key(document, position))) {
+		const marker = key(document, position);
+		if (this.probe?.key === marker) {
+			this.probe.reached = true;
+			// Truthy, so the chain stops here: a probe costs no language server call
+			// as long as we are the one in front.
+			return suppressed();
+		}
+
+		if (this.passthrough.has(marker)) {
 			this.outcomes.reentrant++;
 			return undefined;
 		}
@@ -216,6 +227,38 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 
 	get cacheSize(): number {
 		return this.cache.size;
+	}
+
+	/**
+	 * Whether our provider currently comes first for this position.
+	 *
+	 * There is no API for this: the registry's order is not exposed, and a
+	 * provider that is not first is simply never called. So the only way to know
+	 * is to run the chain and watch whether we are reached. The probe stops the
+	 * chain at us, so when we are winning it costs nothing; when we are not, one
+	 * language server query is the price of finding out — and that is exactly the
+	 * case where we are about to re-register anyway.
+	 */
+	async isFirst(document: vscode.TextDocument, position: vscode.Position): Promise<boolean> {
+		const probe = { key: key(document, position), reached: false };
+		this.probe = probe;
+		try {
+			await vscode.commands.executeCommand(
+				'vscode.executeSignatureHelpProvider',
+				document.uri,
+				position,
+			);
+		} catch (error) {
+			this.log.appendLine(`[probe] ${String(error)}`);
+		} finally {
+			if (this.probe === probe) {
+				this.probe = undefined;
+			}
+		}
+		if (!probe.reached) {
+			this.outcomes.probesLost++;
+		}
+		return probe.reached;
 	}
 
 	/** Runs the provider chain again, with this provider disabled for the position. */

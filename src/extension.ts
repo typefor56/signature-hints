@@ -27,12 +27,13 @@ function selector(): vscode.DocumentFilter[] {
 const CHASE_DELAYS_MS = [1000, 2000, 3000, 4000, 6000, 8000, 10000, 12000, 15000];
 
 /**
- * How long a win stays trusted. Winning once is not winning forever: the Python
- * extension restarts its language server after resolving an interpreter, on
- * configuration changes, and when analysis settles — each restart re-registers
- * Pylance's provider, which makes it the newest and puts it back in front.
+ * Minimum gap between two order checks. Winning once is not winning forever: the
+ * Python extension restarts its language server after resolving an interpreter,
+ * on configuration changes, and when analysis settles — each restart
+ * re-registers Pylance's provider, which makes it the newest and puts it back in
+ * front.
  */
-const RECLAIM_AFTER_MS = 5000;
+const PROBE_THROTTLE_MS = 1000;
 
 /**
  * VS Code orders equally-scored providers newest-first, so registering after the
@@ -51,10 +52,11 @@ class Registration {
 	private readonly lastServed = new Map<string, number>();
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private attempt = 0;
+	private lastProbe = 0;
 	/** Registrations performed, for Show Diagnostics. */
 	refreshes = 0;
 
-	constructor(private readonly provider: vscode.SignatureHelpProvider) {}
+	constructor(private readonly provider: SignatureHintsProvider) {}
 
 	refresh(): void {
 		this.disposable?.dispose();
@@ -78,17 +80,28 @@ class Registration {
 	}
 
 	/**
-	 * Registers again if we have not been reached lately.
+	 * Checks whether we still come first and registers again if not.
 	 *
-	 * Called just before the popup is opened, which is the one moment where
-	 * re-registering is free: nothing is on screen for the registry change to
-	 * cancel, and being the newest provider is exactly what the trigger that
-	 * follows needs.
+	 * Measured rather than assumed: `provider.isFirst` runs the chain and watches
+	 * whether we are reached. Guessing from how long ago we were last called was
+	 * not enough — typing `(` back into `range()` makes VS Code trigger on the
+	 * character before anything of ours runs, so the only reliable moment to
+	 * check is right here, each time the cursor settles inside a call.
+	 *
+	 * Returns true when the lead had to be taken back.
 	 */
-	reclaimIfStale(languageId: string): void {
-		if (Date.now() - (this.lastServed.get(languageId) ?? 0) > RECLAIM_AFTER_MS) {
-			this.refresh();
+	async reclaim(document: vscode.TextDocument, position: vscode.Position): Promise<boolean> {
+		const now = Date.now();
+		if (now - this.lastProbe < PROBE_THROTTLE_MS) {
+			return false;
 		}
+		this.lastProbe = now;
+
+		if (await this.provider.isFirst(document, position)) {
+			return false;
+		}
+		this.refresh();
+		return true;
 	}
 
 	/** Keeps re-registering until the active language is served, then gives up. */
@@ -159,10 +172,10 @@ class Reopener {
 
 	schedule(event: vscode.TextEditorSelectionChangeEvent): void {
 		clearTimeout(this.timer);
-		this.timer = setTimeout(() => this.run(event.textEditor), REOPEN_DEBOUNCE_MS);
+		this.timer = setTimeout(() => void this.run(event.textEditor), REOPEN_DEBOUNCE_MS);
 	}
 
-	private run(editor: vscode.TextEditor): void {
+	private async run(editor: vscode.TextEditor): Promise<void> {
 		if (editor !== vscode.window.activeTextEditor || !editor.selection.isEmpty) {
 			this.lastCall = undefined;
 			return;
@@ -177,7 +190,8 @@ class Reopener {
 			return;
 		}
 
-		const call = resolveCall(editor.document, editor.selection.active);
+		const position = editor.selection.active;
+		const call = resolveCall(editor.document, position);
 		const exclude = excludePatterns(config.get<ExcludeSetting>('exclude'), editor.document.languageId);
 		if (!call || isExcluded(call.name, exclude)) {
 			this.lastCall = undefined;
@@ -187,15 +201,17 @@ class Reopener {
 		// Moving between arguments of the same call is left alone: the popup is
 		// either already up, or the user closed it on purpose.
 		const key = `${call.name}|${call.position.line}|${call.position.character}`;
-		if (key === this.lastCall) {
-			return;
-		}
+		const moved = key !== this.lastCall;
 		this.lastCall = key;
 
-		// Order matters: take the lead back first, then ask for the popup, so the
-		// trigger below is the one that reaches us.
-		this.registration.reclaimIfStale(editor.document.languageId);
-		void vscode.commands.executeCommand('editor.action.triggerParameterHints');
+		// Take the lead back first, so the trigger below is the one that reaches us.
+		// Re-opening after a reclaim matters as much as after a move: typing `(`
+		// back into `range()` makes VS Code trigger on the character, and whoever
+		// is in front at that instant answers.
+		const reclaimed = await this.registration.reclaim(editor.document, position);
+		if (moved || reclaimed) {
+			void vscode.commands.executeCommand('editor.action.triggerParameterHints');
+		}
 	}
 
 	dispose(): void {
