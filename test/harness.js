@@ -63,7 +63,7 @@ Module.globalPaths.push(require('path').join(__dirname, '..', 'node_modules'));
 const { tokenizeSignature } = require(path.join(OUT, 'tokenize.js'));
 const { ThemeColors } = require(path.join(OUT, 'theme.js'));
 const { renderSignatureHtml, parameterRange, formatDocumentation } = require(path.join(OUT, 'render.js'));
-const { resolveCallName, isExcluded, excludePatterns } = require(path.join(OUT, 'callsite.js'));
+const { resolveCallName, resolveCall, isExcluded, excludePatterns } = require(path.join(OUT, 'callsite.js'));
 const { compactSignature } = require(path.join(OUT, 'simplify.js'));
 
 let failures = 0;
@@ -173,6 +173,11 @@ const doc = (text) => ({
     if (slice.length) slice[slice.length - 1] = slice[slice.length - 1].slice(0, range.end.character);
     return slice.join('\n');
   },
+  offsetAt: (p) => text.split('\n').slice(0, p.line).reduce((n, l) => n + l.length + 1, 0) + p.character,
+  positionAt: (offset) => {
+    const before = text.slice(0, offset).split('\n');
+    return new Position(before.length - 1, before[before.length - 1].length);
+  },
 });
 const at = (text, line, character) => resolveCallName(doc(text), new Position(line, character));
 
@@ -187,6 +192,17 @@ check('multi-line call', at('foo(\n  1,\n  ', 2, 2), 'foo');
 check('subscript is not a call', at('d["a"](', 0, 7), undefined);
 check('outside any call', at('x = 1', 0, 5), undefined);
 check('triple-quoted string skipped', at('s = """a(b"""\nprint(', 1, 6), 'print');
+
+// The hover for np.array lives on `array`, not on `np`.
+const site = (text, line, character) => {
+  const call = resolveCall(doc(text), new Position(line, character));
+  return call && [call.name, call.position.line, call.position.character];
+};
+check('callee position is the last segment', site('np.array(', 0, 9), ['np.array', 0, 3]);
+check('callee position, plain name', site('print(', 0, 6), ['print', 0, 0]);
+check('callee position, second line', site('x = 1\nnp.random.randint(', 1, 18), ['np.random.randint', 1, 10]);
+check('callee position, spaced paren', site('foo  (', 0, 6), ['foo', 0, 0]);
+check('no call, no site', site('x = 1', 0, 5), undefined);
 
 console.log('\n== exclusions ==');
 check('bare name', isExcluded('print', ['print']), true);

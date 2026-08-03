@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ExcludeSetting, excludePatterns, resolveCallName } from './callsite';
+import { CallDocsHoverProvider } from './hover';
 import { SignatureHintsProvider } from './provider';
 import { ThemeColors } from './theme';
 
@@ -7,6 +8,13 @@ type Mode = 'signature' | 'doc' | 'both' | 'none';
 
 const MODE_CYCLE: Mode[] = ['signature', 'doc', 'both'];
 const SCHEMES = ['file', 'untitled', 'vscode-notebook-cell'];
+
+function selector(): vscode.DocumentFilter[] {
+	const languages = vscode.workspace
+		.getConfiguration('signatureHints')
+		.get<string[]>('languages', ['*']);
+	return languages.flatMap((language) => SCHEMES.map((scheme) => ({ language, scheme })));
+}
 
 /**
  * VS Code orders equally-scored providers newest-first, so registering after the
@@ -21,13 +29,7 @@ class Registration {
 
 	refresh(): void {
 		this.disposable?.dispose();
-		const languages = vscode.workspace
-			.getConfiguration('signatureHints')
-			.get<string[]>('languages', ['*']);
-		const selector: vscode.DocumentFilter[] = languages.flatMap((language) =>
-			SCHEMES.map((scheme) => ({ language, scheme })),
-		);
-		this.disposable = vscode.languages.registerSignatureHelpProvider(selector, this.provider, {
+		this.disposable = vscode.languages.registerSignatureHelpProvider(selector(), this.provider, {
 			triggerCharacters: ['(', ','],
 			retriggerCharacters: [',', ')'],
 		});
@@ -56,6 +58,10 @@ export function activate(context: vscode.ExtensionContext): void {
 	const registration = new Registration(provider);
 	registration.refresh();
 
+	// Hovers from every provider are shown together, so this one needs no
+	// priority games — unlike signature help, which stops at the first result.
+	const docs = new CallDocsHoverProvider();
+
 	// The language server usually registers its own provider a moment after
 	// startup; claiming priority again once it has settled.
 	const settle = setTimeout(() => registration.refresh(), 2000);
@@ -78,6 +84,8 @@ export function activate(context: vscode.ExtensionContext): void {
 				registration.refresh();
 			}
 		}),
+		vscode.languages.registerHoverProvider(selector(), docs),
+		vscode.commands.registerCommand('signatureHints.showDocs', () => showDocs(docs)),
 		vscode.commands.registerCommand('signatureHints.toggle', toggle),
 		vscode.commands.registerCommand('signatureHints.cycleMode', cycleMode),
 		vscode.commands.registerCommand('signatureHints.excludeCallAtCursor', excludeCallAtCursor),
@@ -116,6 +124,17 @@ async function ensureParameterHintsEnabled(): Promise<void> {
 	if (choice === enable) {
 		await editor.update('parameterHints.enabled', true, vscode.ConfigurationTarget.Global);
 	}
+}
+
+/**
+ * `alt+h`. On a name, this is just VS Code's own hover. Inside a call's
+ * parentheses, the hover provider fills in the callee's documentation, so the
+ * same key works in both places. Pressing it again focuses the hover, which is
+ * how the docstring gets scrolled from the keyboard.
+ */
+async function showDocs(docs: CallDocsHoverProvider): Promise<void> {
+	docs.arm();
+	await vscode.commands.executeCommand('editor.action.showHover');
 }
 
 async function toggle(): Promise<void> {
