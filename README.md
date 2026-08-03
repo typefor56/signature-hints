@@ -55,6 +55,7 @@ offers to turn it on the first time it starts.
 |---|---|---|
 | `signatureHints.enabled` | `true` | Off gives you back VS Code's own parameter hints. |
 | `signatureHints.mode` | `"signature"` | `signature`, `doc`, `both`, `none`. |
+| `signatureHints.reopenInsideCalls` | `true` | Re-open the popup when the cursor moves back between the parentheses. |
 | `signatureHints.signatureStyle` | `"compact"` | `compact` keeps names and defaults; `full` keeps annotations too. |
 | `signatureHints.exclude` | `{"python": ["print"]}` | Calls that never show a popup. |
 | `signatureHints.maxDocLines` | `0` | Lines of docstring before truncating; `0` keeps all of it. |
@@ -165,11 +166,28 @@ So the popup is never taller than a quarter of your editor, and the rest is one
 wheel-scroll away. `signatureHints.overloads: "active"` brings the navigation
 buttons back if you prefer them.
 
+Note the `height / 4`: the cap scales with the **editor's** height, so a taller
+editor pane means a taller popup. It never goes below 250px, which is what a
+notebook cell always gets. To lose a small residual scroll, either lower
+`maxOverloads` or give the editor more room.
+
 Note what this does *not* do: the widget's height follows its content, up to that
 cap. It does not start small and expand as you scroll — nothing in VS Code does
 that, and an extension cannot add it. Keeping the popup to one or two lines means
 putting less in it, which is why `mode` defaults to `signature` and the
 documentation lives behind `alt+h`.
+
+### Coming back into a call
+
+VS Code starts parameter hints on `(` and `,`, and afterwards only keeps them
+alive while they are already showing. Leaving `np.array(x)|` and coming back to
+`np.array(x|)` shows nothing, and typing does not help — none of it is a trigger
+character.
+
+`signatureHints.reopenInsideCalls` (on by default) watches the cursor and
+re-triggers when it lands back inside a call. Moving between arguments of the
+*same* call is left alone, so pressing `Escape` keeps it closed until you leave
+and come back.
 
 ### Overlap with the suggestion list
 

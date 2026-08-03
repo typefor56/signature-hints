@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0
+
+- **`signatureHints.reopenInsideCalls`** (on by default). VS Code starts
+  parameter hints on `(` and `,` and afterwards only keeps them alive while they
+  are already showing, so returning to `np.array(x|)` after leaving the call
+  showed nothing, typing included. The cursor is now watched and the popup
+  re-triggered on re-entry. Moving between arguments of the same call is left
+  alone, so `Escape` stays respected.
+
 ## 0.6.0
 
 - **Fixed: the built-in popup won the startup race.** Registering once at +2s was

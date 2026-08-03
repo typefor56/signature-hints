@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ExcludeSetting, excludePatterns, resolveCallName } from './callsite';
+import { ExcludeSetting, excludePatterns, isExcluded, resolveCall, resolveCallName } from './callsite';
 import { CallDocsHoverProvider } from './hover';
 import { SignatureHintsProvider } from './provider';
 import { ThemeColors } from './theme';
@@ -112,6 +112,64 @@ class Registration {
 	}
 }
 
+/** Settles before probing the call site, so held arrow keys cost one check. */
+const REOPEN_DEBOUNCE_MS = 120;
+
+/**
+ * Re-opens the popup when the cursor moves back inside a call.
+ *
+ * VS Code starts parameter hints on the trigger characters `(` and `,`, and
+ * afterwards only keeps them alive while they are already showing. Leaving
+ * `np.array(x)|` and coming back to `np.array(x|)` therefore shows nothing, and
+ * typing does not bring it back either — nothing there is a trigger character.
+ */
+class Reopener {
+	private timer: ReturnType<typeof setTimeout> | undefined;
+	/** The call last triggered for, so `Escape` is not immediately undone. */
+	private lastCall: string | undefined;
+
+	schedule(event: vscode.TextEditorSelectionChangeEvent): void {
+		clearTimeout(this.timer);
+		this.timer = setTimeout(() => this.run(event.textEditor), REOPEN_DEBOUNCE_MS);
+	}
+
+	private run(editor: vscode.TextEditor): void {
+		if (editor !== vscode.window.activeTextEditor || !editor.selection.isEmpty) {
+			this.lastCall = undefined;
+			return;
+		}
+
+		const config = vscode.workspace.getConfiguration('signatureHints', editor.document);
+		if (
+			!config.get<boolean>('reopenInsideCalls', true) ||
+			!config.get<boolean>('enabled', true) ||
+			config.get<Mode>('mode', 'signature') === 'none'
+		) {
+			return;
+		}
+
+		const call = resolveCall(editor.document, editor.selection.active);
+		const exclude = excludePatterns(config.get<ExcludeSetting>('exclude'), editor.document.languageId);
+		if (!call || isExcluded(call.name, exclude)) {
+			this.lastCall = undefined;
+			return;
+		}
+
+		// Moving between arguments of the same call is left alone: the popup is
+		// either already up, or the user closed it on purpose.
+		const key = `${call.name}|${call.position.line}|${call.position.character}`;
+		if (key === this.lastCall) {
+			return;
+		}
+		this.lastCall = key;
+		void vscode.commands.executeCommand('editor.action.triggerParameterHints');
+	}
+
+	dispose(): void {
+		clearTimeout(this.timer);
+	}
+}
+
 export function activate(context: vscode.ExtensionContext): void {
 	const log = vscode.window.createOutputChannel('Signature Hints');
 	const theme = new ThemeColors();
@@ -126,10 +184,13 @@ export function activate(context: vscode.ExtensionContext): void {
 	// Hovers from every provider are shown together, so this one needs no
 	// priority games — unlike signature help, which stops at the first result.
 	const docs = new CallDocsHoverProvider();
+	const reopener = new Reopener();
 
 	context.subscriptions.push(
 		log,
 		registration,
+		reopener,
+		vscode.window.onDidChangeTextEditorSelection((event) => reopener.schedule(event)),
 		vscode.extensions.onDidChange(() => {
 			registration.refresh();
 			registration.chase();

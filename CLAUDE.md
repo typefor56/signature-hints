@@ -117,7 +117,15 @@ costs nothing: the first signature stays at the top and the rest scrolls. That i
 why `overloads` defaults to `all` — a single signature also means no `.multiple`
 class, hence no `1/5` navigation buttons and no 22px controls column.
 
-**7. Pending keeps the hints, resolved-to-nothing hides them.**
+**7. Nothing re-triggers hints on cursor movement.**
+
+`ParameterHintsModel.onCursorChange` only keeps an *already active* session
+alive; a cursor landing inside an existing call starts nothing, and neither does
+typing, since none of it is a trigger character. `Reopener` in `src/extension.ts`
+watches selections and runs `editor.action.triggerParameterHints`. It keys on the
+call site so movement within one call does not fight a manual `Escape`.
+
+**8. Pending keeps the hints, resolved-to-nothing hides them.**
 
 `ParameterHintsModel`'s state is `Default | Active | Pending`, and
 `Pending` carries `previouslyActiveHints`, which the widget keeps rendering. So a
@@ -127,7 +135,7 @@ now and then on typed stubs, hence the 30s per-call-site cache in `provider.ts`:
 on an empty upstream reply the last good answer is replayed rather than passing
 the emptiness through.
 
-**8. The hover widget has none of these limits.**
+**9. The hover widget has none of these limits.**
 
 `--vscode-hover-maxWidth` is a real CSS variable, set from
 `_setHoverWidgetMaxDimensions`, and the widget is wrapped in a `ResizableContentWidget`

@@ -51,6 +51,12 @@
           "scope": "language-overridable",
           "markdownDescription": "What the parameter hints popup shows. It defaults to `signature` so the popup stays as short as possible — VS Code sizes it to its content, so anything extra makes it taller and more likely to be pushed away from the cursor. Read the documentation with `alt+h` instead."
         },
+        "signatureHints.reopenInsideCalls": {
+          "type": "boolean",
+          "default": true,
+          "scope": "language-overridable",
+          "markdownDescription": "Re-open the popup when the cursor moves back inside a call's parentheses. VS Code only starts parameter hints on `(` and `,`, so returning to `np.array(x|)` after leaving it otherwise shows nothing — not even when you keep typing."
+        },
         "signatureHints.signatureStyle": {
           "type": "string",
           "enum": [
