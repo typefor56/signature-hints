@@ -171,6 +171,28 @@ that, and an extension cannot add it. Keeping the popup to one or two lines mean
 putting less in it, which is why `mode` defaults to `signature` and the
 documentation lives behind `alt+h`.
 
+### Overlap with the suggestion list
+
+The parameter hints popup asks to be placed **above** the cursor
+(`preference: [ABOVE, BELOW]`), and the suggestion list takes the space below.
+When there is no room above — cursor near the top of the viewport, or the first
+lines of a notebook cell — the popup falls back to *below* and lands on top of
+the suggestion list.
+
+This is VS Code's own behavior: nothing hides one for the other, and a widget's
+placement is not something an extension can influence. What is under your control
+is how much room the popup needs, since a shorter one fits above more often:
+`maxOverloads: 1`, or `mode: "signature"` (the default).
+
+If suggestions popping up while you type arguments is the real annoyance:
+
+```jsonc
+"[python]": { "editor.quickSuggestions": { "other": false } }
+```
+
+Suggestions then only appear on `ctrl+space`, and `Escape` dismisses the list
+without closing the parameter hints.
+
 ### What cannot be changed
 
 The width is fixed by VS Code's own stylesheet:
@@ -232,9 +254,13 @@ built-in popup that goes through VS Code's markdown renderer.
 
 Two consequences worth knowing:
 
-- **Provider order.** VS Code orders equally-scored providers newest-first, so the
-  extension re-registers itself after startup, when extensions change, and when
-  you first open a new language. If a language server restarts and takes the lead
+- **Provider order.** VS Code orders equally-scored providers newest-first, so
+  whoever registers last wins, and a provider that is not first is simply never
+  called. Pylance registers when its language server finishes starting — often
+  20s or more into a session with large typed stubs — so the extension keeps
+  re-registering on a backoff for the first minute, stopping as soon as its
+  provider is actually reached. `Signature Hints: Show Diagnostics` reports which
+  languages have been won. If a language server restarts later and takes the lead
   back, run `Signature Hints: Reclaim Provider Priority`.
 - **HTML in the popup is not a contractual API.** It is the behavior of VS Code's
   shared markdown sanitizer, which allows `color`, `background-color` and

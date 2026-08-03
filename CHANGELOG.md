@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0
+
+- **Fixed: the built-in popup won the startup race.** Registering once at +2s was
+  too early — Pylance registers when its language server finishes starting, which
+  with large typed stubs is 20s or more, and whoever registers last wins.
+  Registration now retries on a backoff for the first minute and stops as soon as
+  its provider is actually reached, which is the only observable proof of having
+  won. It also reclaims on every editor change, which is why switching tabs used
+  to fix it by hand.
+- `Show Diagnostics` reports which languages have been won.
+
 ## 0.5.0
 
 - `alt+h` closes the parameter hints popup before opening the hover; the two

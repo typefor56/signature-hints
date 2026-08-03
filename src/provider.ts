@@ -53,6 +53,12 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	private readonly cache = new Map<string, CacheEntry>();
 	/** Milliseconds the last upstream round trip took, for Show Diagnostics. */
 	lastUpstreamMs = -1;
+	/**
+	 * Notified whenever this provider is actually reached. Being called is the
+	 * only observable proof of winning the registration race — the registry's
+	 * order is not exposed to extensions.
+	 */
+	onServed: ((languageId: string) => void) | undefined;
 
 	constructor(
 		private readonly theme: ThemeColors,
@@ -70,6 +76,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		if (this.passthrough.has(key(document, position))) {
 			return undefined;
 		}
+		this.onServed?.(document.languageId);
 
 		const config = vscode.workspace.getConfiguration('signatureHints', document);
 		// Stepping aside, not suppressing: the built-in popup takes over again.

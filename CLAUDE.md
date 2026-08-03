@@ -57,9 +57,23 @@ equal scores `a._time < b._time → return 1`, so the **more recently registered
 provider is ordered first. Selector specificity cannot help — `score()` maxes at
 10, which both `{language:'python'}` and `{language:'python',scheme:'file'}` reach.
 
-Therefore `Registration.refresh()` in `src/extension.ts` re-registers after
-startup (2s), on `extensions.onDidChange`, and when a new language is first
-opened. `signatureHints.reclaimPriority` forces it.
+Therefore `Registration` in `src/extension.ts` re-registers on a backoff for the
+first minute, on `extensions.onDidChange`, and on every editor change.
+`signatureHints.reclaimPriority` forces it.
+
+Two things make this harder than it looks:
+
+- **Losing is invisible.** A provider that is not first is never called, so there
+  is nothing to observe. The only signal is the inverse: *being* called proves we
+  won. `provider.onServed` reports that, and `Registration` stops chasing.
+- **Re-registering cancels the popup.** `ParameterHintsModel` does
+  `this._register(this.providers.onDidChange(this.onModelChanged,this))`, and
+  `onModelChanged` calls `cancel()`. So never re-register on a timer once served
+  — it would dismiss the popup mid-typing. While losing it is harmless: the popup
+  being cancelled is the language server's.
+
+A single retry at +2s was the original design and it was wrong. Pylance registers
+when its server finishes starting, which with numpy-sized stubs is 20s or more.
 
 **4. Empty `parameters` is safe.**
 

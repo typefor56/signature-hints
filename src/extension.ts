@@ -17,13 +17,32 @@ function selector(): vscode.DocumentFilter[] {
 }
 
 /**
+ * Delays before each re-registration attempt, roughly a minute in total.
+ *
+ * A single retry at +2s was not enough: Pylance registers its provider when the
+ * language server finishes starting, which on a project with numpy-sized stubs
+ * is well after that. Registering before it means losing, and the loss is
+ * invisible — a provider that is not first is simply never called.
+ */
+const CHASE_DELAYS_MS = [1000, 2000, 3000, 4000, 6000, 8000, 10000, 12000, 15000];
+
+/**
  * VS Code orders equally-scored providers newest-first, so registering after the
  * language server is what puts us in front of it. Selector specificity cannot
  * help: the score saturates at 10.
+ *
+ * Re-registering is not free: `ParameterHintsModel` listens to the provider
+ * registry (`this.providers.onDidChange(this.onModelChanged, this)`) and cancels
+ * whatever is on screen. So this only retries while it is losing — the popup
+ * being cancelled then is the language server's own, and the next trigger is
+ * ours.
  */
 class Registration {
 	private disposable: vscode.Disposable | undefined;
-	private lastLanguage: string | undefined;
+	/** Languages where our provider has actually been reached. */
+	private readonly served = new Set<string>();
+	private timer: ReturnType<typeof setTimeout> | undefined;
+	private attempt = 0;
 
 	constructor(private readonly provider: vscode.SignatureHelpProvider) {}
 
@@ -35,16 +54,60 @@ class Registration {
 		});
 	}
 
-	/** Re-registers when a language is seen for the first time, after its server has loaded. */
-	refreshForEditor(editor: vscode.TextEditor | undefined): void {
-		const language = editor?.document.languageId;
-		if (language && language !== this.lastLanguage) {
-			this.lastLanguage = language;
+	/**
+	 * Being called at all proves we are in front for this language, which is the
+	 * only signal available — the registry order itself is not observable.
+	 */
+	markServed(languageId: string): void {
+		if (!this.served.has(languageId)) {
+			this.served.add(languageId);
+			this.stop();
+		}
+	}
+
+	/** Keeps re-registering until the active language is served, then gives up. */
+	chase(): void {
+		if (this.pending()) {
+			this.stop();
+			this.attempt = 0;
+			this.step();
+		}
+	}
+
+	private step(): void {
+		const delay = CHASE_DELAYS_MS[this.attempt];
+		if (delay === undefined) {
+			return;
+		}
+		this.timer = setTimeout(() => {
+			if (!this.pending()) {
+				return;
+			}
 			this.refresh();
+			this.attempt++;
+			this.step();
+		}, delay);
+	}
+
+	/** Languages our provider has been reached for, for Show Diagnostics. */
+	get servedLanguages(): readonly string[] {
+		return [...this.served];
+	}
+
+	private pending(): boolean {
+		const language = vscode.window.activeTextEditor?.document.languageId;
+		return !!language && !this.served.has(language);
+	}
+
+	private stop(): void {
+		if (this.timer !== undefined) {
+			clearTimeout(this.timer);
+			this.timer = undefined;
 		}
 	}
 
 	dispose(): void {
+		this.stop();
 		this.disposable?.dispose();
 	}
 }
@@ -56,22 +119,29 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	const provider = new SignatureHintsProvider(theme, log);
 	const registration = new Registration(provider);
+	provider.onServed = (language) => registration.markServed(language);
 	registration.refresh();
+	registration.chase();
 
 	// Hovers from every provider are shown together, so this one needs no
 	// priority games — unlike signature help, which stops at the first result.
 	const docs = new CallDocsHoverProvider();
 
-	// The language server usually registers its own provider a moment after
-	// startup; claiming priority again once it has settled.
-	const settle = setTimeout(() => registration.refresh(), 2000);
-
 	context.subscriptions.push(
 		log,
 		registration,
-		new vscode.Disposable(() => clearTimeout(settle)),
-		vscode.extensions.onDidChange(() => registration.refresh()),
-		vscode.window.onDidChangeActiveTextEditor((editor) => registration.refreshForEditor(editor)),
+		vscode.extensions.onDidChange(() => {
+			registration.refresh();
+			registration.chase();
+		}),
+		// Switching tabs is a safe moment to reclaim the lead: no popup is open, so
+		// nothing gets cancelled. Opening a document may also be what starts a
+		// language server.
+		vscode.window.onDidChangeActiveTextEditor(() => {
+			registration.refresh();
+			registration.chase();
+		}),
+		vscode.workspace.onDidOpenTextDocument(() => registration.chase()),
 		vscode.window.onDidChangeActiveColorTheme(() => theme.reload()),
 		vscode.workspace.onDidChangeConfiguration((event) => {
 			if (
@@ -91,10 +161,11 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('signatureHints.excludeCallAtCursor', excludeCallAtCursor),
 		vscode.commands.registerCommand('signatureHints.reclaimPriority', () => {
 			registration.refresh();
+			registration.chase();
 			vscode.window.setStatusBarMessage('Signature Hints: provider re-registered', 2000);
 		}),
 		vscode.commands.registerCommand('signatureHints.showDiagnostics', () =>
-			showDiagnostics(log, theme, provider),
+			showDiagnostics(log, theme, provider, registration),
 		),
 	);
 
@@ -198,6 +269,7 @@ async function showDiagnostics(
 	log: vscode.OutputChannel,
 	theme: ThemeColors,
 	provider: SignatureHintsProvider,
+	registration: Registration,
 ): Promise<void> {
 	log.show(true);
 	log.appendLine('='.repeat(60));
@@ -217,6 +289,7 @@ async function showDiagnostics(
 	log.appendLine(`document     : ${editor.document.uri.toString()}`);
 	log.appendLine(`language     : ${editor.document.languageId}`);
 	log.appendLine(`call at cursor: ${resolveCallName(editor.document, position) ?? '(none)'}`);
+	log.appendLine(`served langs : ${registration.servedLanguages.join(', ') || '(none yet — the language server is still ahead of us)'}`);
 	log.appendLine(`cached sites : ${provider.cacheSize}`);
 	log.appendLine(`last upstream: ${provider.lastUpstreamMs < 0 ? '(never)' : `${provider.lastUpstreamMs} ms`}`);
 
