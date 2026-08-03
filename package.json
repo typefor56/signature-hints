@@ -33,6 +33,12 @@
           "scope": "language-overridable",
           "markdownDescription": "Master switch. When off, the extension steps aside and VS Code's built-in parameter hints come back — it does not hide the popup. Use `signatureHints.mode: \"none\"` for that."
         },
+        "signatureHints.exclusive": {
+          "type": "boolean",
+          "default": true,
+          "scope": "language-overridable",
+          "markdownDescription": "Once this extension has been reached, never hand the request back to the language server. VS Code's provider chain stops at the first answer, so stepping aside when there is nothing to show is what lets the built-in popup appear mid-typing — the same call rendered by this extension one keystroke and by Pylance the next. With this on, nothing is shown instead. Turn it off to let the built-in popup act as a fallback."
+        },
         "signatureHints.mode": {
           "type": "string",
           "enum": [

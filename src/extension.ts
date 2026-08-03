@@ -27,15 +27,6 @@ function selector(): vscode.DocumentFilter[] {
 const CHASE_DELAYS_MS = [1000, 2000, 3000, 4000, 6000, 8000, 10000, 12000, 15000];
 
 /**
- * Minimum gap between two order checks. Winning once is not winning forever: the
- * Python extension restarts its language server after resolving an interpreter,
- * on configuration changes, and when analysis settles — each restart
- * re-registers Pylance's provider, which makes it the newest and puts it back in
- * front.
- */
-const PROBE_THROTTLE_MS = 1000;
-
-/**
  * VS Code orders equally-scored providers newest-first, so registering after the
  * language server is what puts us in front of it. Selector specificity cannot
  * help: the score saturates at 10.
@@ -52,7 +43,6 @@ class Registration {
 	private readonly lastServed = new Map<string, number>();
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private attempt = 0;
-	private lastProbe = 0;
 	/** Registrations performed, for Show Diagnostics. */
 	refreshes = 0;
 
@@ -80,28 +70,18 @@ class Registration {
 	}
 
 	/**
-	 * Checks whether we still come first and registers again if not.
+	 * Registers again unless the chain has already reached us for this revision.
 	 *
-	 * Measured rather than assumed: `provider.isFirst` runs the chain and watches
-	 * whether we are reached. Guessing from how long ago we were last called was
-	 * not enough — typing `(` back into `range()` makes VS Code trigger on the
-	 * character before anything of ours runs, so the only reliable moment to
-	 * check is right here, each time the cursor settles inside a call.
+	 * `wasCalledFor` is exact and free, so no throttle is needed and nothing is
+	 * added to the typing path. A false answer means either we are behind, or no
+	 * trigger happened at all — and re-registering is harmless in the second case,
+	 * since an open popup is re-queried on every content change, so a popup that
+	 * is ours would have kept the answer true.
 	 *
 	 * Returns true when the lead had to be taken back.
 	 */
-	async reclaim(
-		document: vscode.TextDocument,
-		position: vscode.Position,
-		force = false,
-	): Promise<boolean> {
-		const now = Date.now();
-		if (!force && now - this.lastProbe < PROBE_THROTTLE_MS) {
-			return false;
-		}
-		this.lastProbe = now;
-
-		if (await this.provider.isFirst(document, position)) {
+	reclaim(document: vscode.TextDocument): boolean {
+		if (this.provider.wasCalledFor(document)) {
 			return false;
 		}
 		this.refresh();
@@ -205,10 +185,10 @@ class Reopener {
 
 	schedule(event: vscode.TextEditorSelectionChangeEvent): void {
 		clearTimeout(this.timer);
-		this.timer = setTimeout(() => void this.run(event.textEditor), REOPEN_DEBOUNCE_MS);
+		this.timer = setTimeout(() => this.run(event.textEditor), REOPEN_DEBOUNCE_MS);
 	}
 
-	private async run(editor: vscode.TextEditor): Promise<void> {
+	private run(editor: vscode.TextEditor): void {
 		if (editor !== vscode.window.activeTextEditor || !editor.selection.isEmpty) {
 			this.lastCall = undefined;
 			return;
@@ -254,13 +234,7 @@ class Reopener {
 			this.lastNudge = now;
 		}
 
-		// Not having been reached for this revision is the precise signal that
-		// something is in front of us, and the only one worth paying a probe for.
-		// It forces the check past the usual throttle — re-triggering without
-		// re-registering would just ask the same provider again, which is how
-		// spamming commas kept bringing the built-in popup back.
-		const behind = !this.provider.wasCalledFor(editor.document);
-		const reclaimed = await this.registration.reclaim(editor.document, position, behind);
+		const reclaimed = this.registration.reclaim(editor.document);
 
 		// Moving between arguments of the same call is left alone otherwise.
 		if (moved || reclaimed || nudge) {
@@ -470,7 +444,8 @@ async function showDiagnostics(
 		log.appendLine(`  ${scope.padEnd(24)} ${style.foreground}${style.bold ? ' bold' : ''}`);
 	}
 
-	const editor = vscode.window.activeTextEditor;
+	const editorNow = vscode.window.activeTextEditor;
+	const editor = editorNow;
 	if (!editor) {
 		log.appendLine('no active editor');
 		return;
@@ -482,6 +457,9 @@ async function showDiagnostics(
 	log.appendLine(`served langs : ${registration.servedLanguages.join(', ') || '(never reached — the language server is still ahead of us)'}`);
 	log.appendLine(`registrations: ${registration.refreshes}`);
 	log.appendLine(`outcomes     : ${JSON.stringify(provider.outcomes)}`);
+	if (editorNow) {
+		log.appendLine(`in front now : ${provider.wasCalledFor(editorNow.document)}`);
+	}
 	log.appendLine(`cached sites : ${provider.cacheSize}`);
 	log.appendLine(`last upstream: ${provider.lastUpstreamMs < 0 ? '(never)' : `${provider.lastUpstreamMs} ms`}`);
 

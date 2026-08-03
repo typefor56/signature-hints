@@ -228,7 +228,17 @@ called at proves the chain reached us since that edit. Exact, and free — while
 are in front no probe runs at all, which is what keeps this off the typing path.
 Gating it on "does the popup look like ours" instead was a bug: every `,` is a
 trigger character, so comma spam handed the popup back on each keystroke while
-the throttled guess suppressed the re-registration that would have fixed it. And because all this re-triggers eagerly, `Escape` needs
+the throttled guess suppressed the re-registration that would have fixed it.
+
+**Do not probe the order by running the chain.** An earlier attempt did, keyed by
+cursor position — which is exactly where VS Code sends real requests, so a
+keystroke arriving during a probe was answered by the probe and the popup went
+blank. Measuring beats probing.
+
+**Never step aside once reached** (`exclusive`, on by default). The chain stops
+at the first answer, so returning `undefined` mid-session hands that keystroke to
+the language server and its raw popup flashes inside ours. Return an empty result
+instead. The one exception stays `enabled: false`. And because all this re-triggers eagerly, `Escape` needs
 recording: `signatureHints.dismissHints` marks the call site and `Reopener`
 leaves it alone until the cursor leaves.
 

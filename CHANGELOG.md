@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.12.0
+
+- **The built-in popup can no longer appear once this extension is reached.**
+  `signatureHints.exclusive` (on by default). VS Code's provider chain stops at
+  the first answer, so returning nothing hands the request to the language server
+  — which is what produced the alternation: the same call rendered by this
+  extension one keystroke and by Pylance the next. Nothing is shown instead.
+  `enabled: false` still steps aside; that is its whole purpose.
+- **Removed the order probe, which was racing against itself.** It identified its
+  own request by cursor position — exactly where VS Code sends real ones — so a
+  keystroke landing during a probe had its answer swallowed and the popup went
+  blank or fell through. `wasCalledFor` already answers the same question
+  exactly, from the document version, at no cost, so the probe is gone along with
+  its throttle. Priority is reclaimed whenever the chain has not reached us for
+  the current revision.
+
 ## 0.11.0
 
 - **Fixed: spamming commas, or typing a call fast, brought the built-in popup

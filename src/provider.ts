@@ -80,10 +80,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		fromCache: 0,
 		rendered: 0,
 		empty: 0,
-		probesLost: 0,
 	};
-	/** Set while `isFirst` is running; see there. */
-	private probe: { key: string; reached: boolean } | undefined;
 
 	constructor(
 		private readonly theme: ThemeColors,
@@ -99,13 +96,6 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		// Our own `executeSignatureHelpProvider` call lands back here; stepping
 		// aside lets it reach the language server underneath.
 		const marker = key(document, position);
-		if (this.probe?.key === marker) {
-			this.probe.reached = true;
-			// Truthy, so the chain stops here: a probe costs no language server call
-			// as long as we are the one in front.
-			return suppressed();
-		}
-
 		if (this.passthrough.has(marker)) {
 			this.outcomes.reentrant++;
 			return undefined;
@@ -145,7 +135,11 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		if (!resolved) {
 			this.outcomes.nothingUpstream++;
 			this.trace(config, `nothing upstream for ${call?.name ?? '(no call)'} after ${this.lastUpstreamMs}ms`);
-			return undefined;
+			// Having been reached and then stepping aside is what lets the built-in
+			// popup appear in the middle of ours — the same call rendered by this
+			// extension one keystroke and by the language server the next. Showing
+			// nothing is the lesser evil, and the cache makes it rare.
+			return config.get<boolean>('exclusive', true) ? suppressed() : undefined;
 		}
 
 		const built = this.build(resolved, call?.name, mode, config);
@@ -157,11 +151,11 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 			this.lastRenderedCall = site;
 			this.lastRenderedAt = Date.now();
 			this.trace(config, `rendered ${call?.name ?? '?'} (${resolved.signatures.length} sig, ${this.lastUpstreamMs}ms)`);
-		} else {
-			this.outcomes.empty++;
-			this.trace(config, `built nothing for ${call?.name ?? '?'}`);
+			return built;
 		}
-		return built;
+		this.outcomes.empty++;
+		this.trace(config, `built nothing for ${call?.name ?? '?'}`);
+		return config.get<boolean>('exclusive', true) ? suppressed() : undefined;
 	}
 
 	/**
@@ -278,8 +272,10 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	 * The precise, cheap answer to "are we in front". VS Code re-queries providers
 	 * on every content change, so if the version we were last called at matches
 	 * the document's, the chain reached us since that edit — and a provider that
-	 * is not first is never called. Only when this is false is a probe worth
-	 * paying for, which is what keeps the check off the typing path.
+	 * is not first is never called. This replaced an explicit probe that ran the
+	 * chain to find out: the probe identified itself by cursor position, which is
+	 * exactly where VS Code sends its real requests, so a fast keystroke during
+	 * one had its answer swallowed. Measuring beats probing, and costs nothing.
 	 */
 	wasCalledFor(document: vscode.TextDocument): boolean {
 		return this.lastCalledUri === document.uri.toString() && this.lastCalledVersion === document.version;
@@ -294,38 +290,6 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	 */
 	forgetOwnership(): void {
 		this.lastRenderedCall = undefined;
-	}
-
-	/**
-	 * Whether our provider currently comes first for this position.
-	 *
-	 * There is no API for this: the registry's order is not exposed, and a
-	 * provider that is not first is simply never called. So the only way to know
-	 * is to run the chain and watch whether we are reached. The probe stops the
-	 * chain at us, so when we are winning it costs nothing; when we are not, one
-	 * language server query is the price of finding out — and that is exactly the
-	 * case where we are about to re-register anyway.
-	 */
-	async isFirst(document: vscode.TextDocument, position: vscode.Position): Promise<boolean> {
-		const probe = { key: key(document, position), reached: false };
-		this.probe = probe;
-		try {
-			await vscode.commands.executeCommand(
-				'vscode.executeSignatureHelpProvider',
-				document.uri,
-				position,
-			);
-		} catch (error) {
-			this.log.appendLine(`[probe] ${String(error)}`);
-		} finally {
-			if (this.probe === probe) {
-				this.probe = undefined;
-			}
-		}
-		if (!probe.reached) {
-			this.outcomes.probesLost++;
-		}
-		return probe.reached;
 	}
 
 	/**
