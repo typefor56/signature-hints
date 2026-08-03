@@ -166,6 +166,11 @@
             "*"
           ],
           "description": "Language ids to take over. \"*\" means every language."
+        },
+        "signatureHints.trace": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Log every signature help call and how it ended to the Signature Hints output channel. Use it when the built-in popup shows instead of this one: no line at all means the language server is ahead in the provider order, a line means we were reached and something else is wrong."
         }
       }
     },

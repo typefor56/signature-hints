@@ -52,10 +52,21 @@ Two consequences the extension relies on:
 
 **3. Provider ordering is newest-first.**
 
-`LanguageFeatureRegistry._compareByScoreAndTime`: higher score first, and for
-equal scores `a._time < b._time → return 1`, so the **more recently registered**
-provider is ordered first. Selector specificity cannot help — `score()` maxes at
-10, which both `{language:'python'}` and `{language:'python',scheme:'file'}` reach.
+```js
+static _compareByScoreAndTime(i,e){return i._score<e._score?1:i._score>e._score?-1:
+  Krt(i.selector)&&!Krt(e.selector)?1:!Krt(i.selector)&&Krt(e.selector)?-1:
+  i._time<e._time?1:i._time>e._time?-1:0}
+function Krt(s){return typeof s=="string"?!1:Array.isArray(s)?s.some(Krt):!!s.isBuiltin}
+```
+
+Three keys in order: score, then non-builtin before builtin, then **newest
+first**. `isBuiltin` is set on core selectors only, so it never separates us from
+another extension — the tiebreak that decides is `_time`.
+
+Selector specificity cannot help: `score()` assigns, never accumulates, and maxes
+at 10. `{language:'*',scheme:'file'}` gets `p=10` from the scheme and then
+`Math.max(p,5)` for the wildcard language, so it ties `{language:'python'}`
+exactly.
 
 Therefore `Registration` in `src/extension.ts` re-registers on a backoff for the
 first minute, on `extensions.onDidChange`, and on every editor change.
@@ -66,6 +77,16 @@ Two things make this harder than it looks:
 - **Losing is invisible.** A provider that is not first is never called, so there
   is nothing to observe. The only signal is the inverse: *being* called proves we
   won. `provider.onServed` reports that, and `Registration` stops chasing.
+  **A win is not permanent.** Treating it as one was a real bug: the Python
+  extension restarts its language server (interpreter resolution, config changes,
+  analysis settling) and each restart re-registers Pylance as the newest, so it
+  takes the lead back and our provider is never called again. `lastServed` is a
+  timestamp, and `reclaimIfStale` re-registers when the cursor enters a call and
+  we have not been reached for 5s — the one moment where re-registering costs
+  nothing, since no popup is open to cancel.
+- **Losing and returning nothing look identical.** Both leave the built-in popup
+  on screen. `signatureHints.trace` and `provider.outcomes` are what separate
+  them; without those the only honest answer is "I don't know which".
 - **Re-registering cancels the popup.** `ParameterHintsModel` does
   `this._register(this.providers.onDidChange(this.onModelChanged,this))`, and
   `onModelChanged` calls `cancel()`. So never re-register on a timer once served

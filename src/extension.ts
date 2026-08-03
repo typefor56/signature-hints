@@ -27,6 +27,14 @@ function selector(): vscode.DocumentFilter[] {
 const CHASE_DELAYS_MS = [1000, 2000, 3000, 4000, 6000, 8000, 10000, 12000, 15000];
 
 /**
+ * How long a win stays trusted. Winning once is not winning forever: the Python
+ * extension restarts its language server after resolving an interpreter, on
+ * configuration changes, and when analysis settles — each restart re-registers
+ * Pylance's provider, which makes it the newest and puts it back in front.
+ */
+const RECLAIM_AFTER_MS = 5000;
+
+/**
  * VS Code orders equally-scored providers newest-first, so registering after the
  * language server is what puts us in front of it. Selector specificity cannot
  * help: the score saturates at 10.
@@ -39,10 +47,12 @@ const CHASE_DELAYS_MS = [1000, 2000, 3000, 4000, 6000, 8000, 10000, 12000, 15000
  */
 class Registration {
 	private disposable: vscode.Disposable | undefined;
-	/** Languages where our provider has actually been reached. */
-	private readonly served = new Set<string>();
+	/** When our provider was last reached, per language. */
+	private readonly lastServed = new Map<string, number>();
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private attempt = 0;
+	/** Registrations performed, for Show Diagnostics. */
+	refreshes = 0;
 
 	constructor(private readonly provider: vscode.SignatureHelpProvider) {}
 
@@ -52,6 +62,7 @@ class Registration {
 			triggerCharacters: ['(', ','],
 			retriggerCharacters: [',', ')'],
 		});
+		this.refreshes++;
 	}
 
 	/**
@@ -59,9 +70,24 @@ class Registration {
 	 * only signal available — the registry order itself is not observable.
 	 */
 	markServed(languageId: string): void {
-		if (!this.served.has(languageId)) {
-			this.served.add(languageId);
+		const first = !this.lastServed.has(languageId);
+		this.lastServed.set(languageId, Date.now());
+		if (first) {
 			this.stop();
+		}
+	}
+
+	/**
+	 * Registers again if we have not been reached lately.
+	 *
+	 * Called just before the popup is opened, which is the one moment where
+	 * re-registering is free: nothing is on screen for the registry change to
+	 * cancel, and being the newest provider is exactly what the trigger that
+	 * follows needs.
+	 */
+	reclaimIfStale(languageId: string): void {
+		if (Date.now() - (this.lastServed.get(languageId) ?? 0) > RECLAIM_AFTER_MS) {
+			this.refresh();
 		}
 	}
 
@@ -89,14 +115,15 @@ class Registration {
 		}, delay);
 	}
 
-	/** Languages our provider has been reached for, for Show Diagnostics. */
+	/** Languages our provider has been reached for, with how long ago. */
 	get servedLanguages(): readonly string[] {
-		return [...this.served];
+		const now = Date.now();
+		return [...this.lastServed].map(([language, at]) => `${language} (${now - at}ms ago)`);
 	}
 
 	private pending(): boolean {
 		const language = vscode.window.activeTextEditor?.document.languageId;
-		return !!language && !this.served.has(language);
+		return !!language && !this.lastServed.has(language);
 	}
 
 	private stop(): void {
@@ -127,6 +154,8 @@ class Reopener {
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	/** The call last triggered for, so `Escape` is not immediately undone. */
 	private lastCall: string | undefined;
+
+	constructor(private readonly registration: Registration) {}
 
 	schedule(event: vscode.TextEditorSelectionChangeEvent): void {
 		clearTimeout(this.timer);
@@ -162,6 +191,10 @@ class Reopener {
 			return;
 		}
 		this.lastCall = key;
+
+		// Order matters: take the lead back first, then ask for the popup, so the
+		// trigger below is the one that reaches us.
+		this.registration.reclaimIfStale(editor.document.languageId);
 		void vscode.commands.executeCommand('editor.action.triggerParameterHints');
 	}
 
@@ -184,7 +217,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	// Hovers from every provider are shown together, so this one needs no
 	// priority games — unlike signature help, which stops at the first result.
 	const docs = new CallDocsHoverProvider();
-	const reopener = new Reopener();
+	const reopener = new Reopener(registration);
 
 	context.subscriptions.push(
 		log,
@@ -350,7 +383,9 @@ async function showDiagnostics(
 	log.appendLine(`document     : ${editor.document.uri.toString()}`);
 	log.appendLine(`language     : ${editor.document.languageId}`);
 	log.appendLine(`call at cursor: ${resolveCallName(editor.document, position) ?? '(none)'}`);
-	log.appendLine(`served langs : ${registration.servedLanguages.join(', ') || '(none yet — the language server is still ahead of us)'}`);
+	log.appendLine(`served langs : ${registration.servedLanguages.join(', ') || '(never reached — the language server is still ahead of us)'}`);
+	log.appendLine(`registrations: ${registration.refreshes}`);
+	log.appendLine(`outcomes     : ${JSON.stringify(provider.outcomes)}`);
 	log.appendLine(`cached sites : ${provider.cacheSize}`);
 	log.appendLine(`last upstream: ${provider.lastUpstreamMs < 0 ? '(never)' : `${provider.lastUpstreamMs} ms`}`);
 

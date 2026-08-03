@@ -276,10 +276,13 @@ Two consequences worth knowing:
   whoever registers last wins, and a provider that is not first is simply never
   called. Pylance registers when its language server finishes starting — often
   20s or more into a session with large typed stubs — so the extension keeps
-  re-registering on a backoff for the first minute, stopping as soon as its
-  provider is actually reached. `Signature Hints: Show Diagnostics` reports which
-  languages have been won. If a language server restarts later and takes the lead
-  back, run `Signature Hints: Reclaim Provider Priority`.
+  re-registering on a backoff for the first minute, and reclaims the lead
+  whenever the cursor enters a call after 5s without being reached — language
+  servers restart and re-register, which puts them back in front.
+  `Signature Hints: Show Diagnostics` reports which languages have been served
+  and how long ago; `signatureHints.trace` logs every call. If the built-in popup
+  shows and the trace stays empty, the provider order is the problem and
+  `Signature Hints: Reclaim Provider Priority` fixes it on the spot.
 - **HTML in the popup is not a contractual API.** It is the behavior of VS Code's
   shared markdown sanitizer, which allows `color`, `background-color` and
   `border-radius` on `<span>`. Verified against VS Code 1.131. If a future release

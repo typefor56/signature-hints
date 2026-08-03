@@ -59,6 +59,20 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	 * order is not exposed to extensions.
 	 */
 	onServed: ((languageId: string) => void) | undefined;
+	/**
+	 * Tally of how each call ended. Losing the race and being reached but
+	 * returning nothing look identical from the outside — the built-in popup
+	 * shows either way — so the two have to be told apart from in here.
+	 */
+	readonly outcomes = {
+		reentrant: 0,
+		disabled: 0,
+		suppressed: 0,
+		nothingUpstream: 0,
+		fromCache: 0,
+		rendered: 0,
+		empty: 0,
+	};
 
 	constructor(
 		private readonly theme: ThemeColors,
@@ -74,6 +88,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		// Our own `executeSignatureHelpProvider` call lands back here; stepping
 		// aside lets it reach the language server underneath.
 		if (this.passthrough.has(key(document, position))) {
+			this.outcomes.reentrant++;
 			return undefined;
 		}
 		this.onServed?.(document.languageId);
@@ -81,16 +96,22 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		const config = vscode.workspace.getConfiguration('signatureHints', document);
 		// Stepping aside, not suppressing: the built-in popup takes over again.
 		if (!config.get<boolean>('enabled', true)) {
+			this.outcomes.disabled++;
+			this.trace(config, 'disabled');
 			return undefined;
 		}
 		const mode = config.get<Mode>('mode', 'signature');
 		if (mode === 'none') {
+			this.outcomes.suppressed++;
+			this.trace(config, 'mode is none');
 			return suppressed();
 		}
 
 		const call = resolveCall(document, position);
 		const exclude = excludePatterns(config.get<ExcludeSetting>('exclude'), document.languageId);
 		if (isExcluded(call?.name, exclude)) {
+			this.outcomes.suppressed++;
+			this.trace(config, `excluded: ${call?.name}`);
 			return suppressed();
 		}
 
@@ -100,10 +121,26 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 
 		const resolved = this.settle(document, call, upstream);
 		if (!resolved) {
+			this.outcomes.nothingUpstream++;
+			this.trace(config, `nothing upstream for ${call?.name ?? '(no call)'} after ${this.lastUpstreamMs}ms`);
 			return undefined;
 		}
 
-		return this.build(resolved, call?.name, mode, config);
+		const built = this.build(resolved, call?.name, mode, config);
+		if (built) {
+			this.outcomes.rendered++;
+			this.trace(config, `rendered ${call?.name ?? '?'} (${resolved.signatures.length} sig, ${this.lastUpstreamMs}ms)`);
+		} else {
+			this.outcomes.empty++;
+			this.trace(config, `built nothing for ${call?.name ?? '?'}`);
+		}
+		return built;
+	}
+
+	private trace(config: vscode.WorkspaceConfiguration, message: string): void {
+		if (config.get<boolean>('trace', false)) {
+			this.log.appendLine(`[${new Date().toISOString().slice(11, 23)}] ${message}`);
+		}
 	}
 
 	/**
@@ -138,6 +175,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		if (!cached) {
 			return undefined;
 		}
+		this.outcomes.fromCache++;
 		return {
 			signatures: cached.signatures,
 			activeSignature: cached.activeSignature,

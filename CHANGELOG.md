@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.1
+
+- **Fixed: the built-in popup took the lead back for good.** Winning the
+  registration race was recorded as a permanent fact, so the backoff stopped
+  after the first success and nothing ever reclaimed. But the Python extension
+  restarts its language server — after resolving an interpreter, on
+  configuration changes, when analysis settles — and every restart re-registers
+  Pylance's provider as the newest, putting it back in front. From then on our
+  provider was never called again.
+  The win is now a timestamp, and priority is reclaimed when the cursor enters a
+  call and we have not been reached for 5s. That moment is the one where
+  re-registering is free: no popup is open for the registry change to cancel,
+  and the trigger that follows is the one that reaches us.
+- **`signatureHints.trace`** logs every call and how it ended. Losing the race
+  and being reached but returning nothing look identical from the outside — both
+  show the built-in popup — and this tells them apart. `Show Diagnostics` also
+  reports the outcome tally and how long ago each language was served.
+
 ## 0.7.0
 
 - **`signatureHints.reopenInsideCalls`** (on by default). VS Code starts
