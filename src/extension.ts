@@ -146,7 +146,7 @@ async function toggle(): Promise<void> {
 
 async function cycleMode(): Promise<void> {
 	const config = vscode.workspace.getConfiguration('signatureHints');
-	const current = config.get<Mode>('mode', 'both');
+	const current = config.get<Mode>('mode', 'signature');
 	const next = MODE_CYCLE[(MODE_CYCLE.indexOf(current) + 1) % MODE_CYCLE.length]!;
 	await config.update('mode', next, vscode.ConfigurationTarget.Global);
 	vscode.window.setStatusBarMessage(`Signature Hints: ${next}`, 2000);
@@ -213,7 +213,13 @@ async function showDiagnostics(
 	log.appendLine(`document     : ${editor.document.uri.toString()}`);
 	log.appendLine(`language     : ${editor.document.languageId}`);
 	log.appendLine(`call at cursor: ${resolveCallName(editor.document, position) ?? '(none)'}`);
+	log.appendLine(`cached sites : ${provider.cacheSize}`);
+	log.appendLine(`last upstream: ${provider.lastUpstreamMs < 0 ? '(never)' : `${provider.lastUpstreamMs} ms`}`);
 
+	// Timed separately: this is the language server's own latency, and it is the
+	// number to look at when the popup feels slow.
+	const started = Date.now();
 	const upstream = await provider.fetchUpstream(editor.document, position);
+	log.appendLine(`this fetch   : ${Date.now() - started} ms`);
 	log.appendLine(`upstream     : ${upstream ? JSON.stringify(upstream, null, 2) : '(nothing)'}`);
 }

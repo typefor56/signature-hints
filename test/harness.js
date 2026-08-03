@@ -204,6 +204,17 @@ check('callee position, second line', site('x = 1\nnp.random.randint(', 1, 18), 
 check('callee position, spaced paren', site('foo  (', 0, 6), ['foo', 0, 0]);
 check('no call, no site', site('x = 1', 0, 5), undefined);
 
+// Fallback used when the language server has not answered yet.
+const argIndex = (text, line, character) =>
+  resolveCall(doc(text), new Position(line, character))?.activeParameter;
+check('first argument', argIndex('f(', 0, 2), 0);
+check('second argument', argIndex('f(a, ', 0, 5), 1);
+check('third argument', argIndex('f(a, b, ', 0, 8), 2);
+check('commas in a nested call do not count', argIndex('f(g(a, b), ', 0, 11), 1);
+check('commas in a list do not count', argIndex('f([a, b], ', 0, 10), 1);
+check('commas in a string do not count', argIndex('f("a, b", ', 0, 10), 1);
+check('nested call has its own count', argIndex('f(a, g(b, ', 0, 10), 1);
+
 console.log('\n== exclusions ==');
 check('bare name', isExcluded('print', ['print']), true);
 check('bare name matches qualified', isExcluded('builtins.print', ['print']), true);
