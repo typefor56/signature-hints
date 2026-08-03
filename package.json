@@ -5,6 +5,15 @@
   "version": "0.15.0",
   "publisher": "for56",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/typefor56/signature-hints.git"
+  },
+  "bugs": {
+    "url": "https://github.com/typefor56/signature-hints/issues"
+  },
+  "homepage": "https://github.com/typefor56/signature-hints#readme",
+  "icon": "docs/signature-hints-128.png",
   "keywords": [
     "parameter hints",
     "signature help",

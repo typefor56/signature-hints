@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.16.0
+
+- **Fixed: the popup blinked on every comma.** Holding the provider lead, added
+  in 0.13.0, re-registered too eagerly — and re-registering cancels whatever the
+  parameter hints widget is showing, because the model listens to the provider
+  registry. Typing `,` inside `range(1, )` reaches the extension before VS Code's
+  query for the new revision does, so the "are we in front" check read false for
+  a moment and the popup was dismissed and immediately reopened. A successful
+  render now vouches for the lead for 2s, which is exactly the situation where
+  re-registering could only do harm: having rendered proves we were in front.
+- `repository`, `bugs`, `homepage` and `icon` are set, so the Marketplace listing
+  has a source link and the README's images resolve once the repository is
+  pushed.
+
 ## 0.15.0
 
 - **Security: a docstring could no longer make the editor fetch a URL.**

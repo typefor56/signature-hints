@@ -81,6 +81,15 @@ class Registration {
 	 * Returns true when the lead had to be taken back.
 	 */
 	reclaim(document: vscode.TextDocument): boolean {
+		// Having rendered proves we were in front, and a popup of ours is likely on
+		// screen. Re-registering cancels it — `ParameterHintsModel` listens to the
+		// registry — so a lead we can vouch for is left alone. Without this, every
+		// `,` inside a call made the popup vanish and come back: the document change
+		// reaches us before VS Code's query for the new revision does, so
+		// `wasCalledFor` reads false for a moment even though nothing is wrong.
+		if (Date.now() - this.provider.lastRenderedAt < LEAD_TRUST_MS) {
+			return false;
+		}
 		if (this.provider.wasCalledFor(document)) {
 			return false;
 		}
@@ -141,6 +150,13 @@ const REOPEN_DEBOUNCE_MS = 120;
 
 /** Minimum gap between two attempts to replace a popup that is not ours. */
 const NUDGE_THROTTLE_MS = 1000;
+
+/**
+ * How long a successful render vouches for the lead. Long enough to cover a
+ * burst of typing inside one call, short enough that a language server
+ * restarting mid-session is noticed on the next pause.
+ */
+const LEAD_TRUST_MS = 2000;
 
 /**
  * Our own visibility flag for the hover.

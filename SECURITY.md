@@ -76,6 +76,7 @@ nest into a catastrophic backtracking pattern.
 
 ## Before publishing
 
-`package.json` still has no `repository`, `bugs` or `icon`. The Marketplace shows
-a placeholder icon and no source link without them, and `vsce package` warns about
-the missing repository on every build.
+Nothing outstanding in the manifest. `repository`, `bugs`, `homepage` and `icon`
+are set, so `vsce` rewrites the README's relative image links to
+`raw.githubusercontent.com` on its own — those resolve only once the repository
+has actually been pushed.
