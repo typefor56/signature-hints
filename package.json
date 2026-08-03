@@ -2,7 +2,7 @@
   "name": "signature-hints",
   "displayName": "Signature Hints",
   "description": "Parameter hints with theme-matched syntax highlighting, per-function exclusions, signature/doc modes and a one-key toggle.",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "for56",
   "license": "MIT",
   "keywords": [
