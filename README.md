@@ -174,6 +174,14 @@ Extension keybindings outrank built-in ones, so this wins and `quitEdit` does no
 run. It is scoped to notebooks and to a visible hover, so `Escape` keeps its
 usual meaning everywhere else.
 
+### `Escape` with VSCodeVim
+
+The popup's and the hover's `Escape` bindings win the key over VSCodeVim's
+own, so on their own they would close the popup and leave you in Insert mode.
+They hand it on: the popup closes **and** Vim goes back to Normal mode, as
+`Escape` does without the popup. In Normal mode it only closes the popup.
+Without VSCodeVim nothing changes.
+
 ## Commands
 
 | Command | Key |

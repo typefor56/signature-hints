@@ -368,6 +368,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('signatureHints.dismissHints', async () => {
 			reopener.dismiss(vscode.window.activeTextEditor);
 			await vscode.commands.executeCommand('closeParameterHints');
+			await vimEscape();
 		}),
 		vscode.commands.registerCommand('signatureHints.toggle', toggle),
 		vscode.commands.registerCommand('signatureHints.cycleMode', cycleMode),
@@ -433,7 +434,19 @@ async function showDocs(docs: CallDocsHoverProvider): Promise<void> {
  */
 function dismissHover(): void {
 	setHoverShown(false);
-	void vscode.commands.executeCommand('editor.action.hideHover');
+	void vscode.commands.executeCommand('editor.action.hideHover').then(vimEscape);
+}
+
+/**
+ * Both `Escape` bindings win the key over VSCodeVim's own, so on their own they
+ * close the popup and leave Vim in Insert mode. Hand the key on: whatever
+ * Escape does in Vim (Insert → Normal) happens too. In Normal mode it is a
+ * no-op; without VSCodeVim, nothing runs.
+ */
+async function vimEscape(): Promise<void> {
+	if (vscode.extensions.getExtension('vscodevim.vim')?.isActive) {
+		await vscode.commands.executeCommand('extension.vim_escape');
+	}
 }
 
 async function toggle(): Promise<void> {

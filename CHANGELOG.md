@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.19.2
+
+- **`Escape` with VSCodeVim closes the popup and returns to Normal mode.** The
+  popup's (and the `alt+h` hover's) `Escape` binding won the key over
+  VSCodeVim's, so the popup closed but Vim stayed in Insert mode. The key is
+  now handed on to Vim as well; in Normal mode it only closes the popup.
+
+## 0.19.1
+
+- Marketplace copy refreshed: the description and the README no longer
+  advertise a one-key toggle.
+
 ## 0.19.0
 
 - **`signatureHints.highlightActiveParameter`**, off by default. The argument

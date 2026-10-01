@@ -174,6 +174,14 @@ has no default keybinding. `Escape` closes the hover from the controller's
 other `Escape` binding fires too. Harmless in a plain editor; in a notebook
 `notebook.cell.quitEdit` also runs and drops you out of the cell.
 
+**Both `Escape` bindings hand the key on to VSCodeVim.** Two extensions binding
+the same key have no guaranteed order, and these win over VSCodeVim's
+`extension.vim_escape`: on their own they closed the popup and left Vim in
+Insert mode. `vimEscape()` in `src/extension.ts` runs `extension.vim_escape`
+after closing, when VSCodeVim is active (a no-op in Normal mode). Verified in a
+real extension host with VSCodeVim: Insert, `ab`, dismiss, `x` deletes a
+character instead of inserting one.
+
 **Do not bind on `editorHoverVisible`.** That listener runs *before* the
 keybinding service resolves the key, so `_hoverVisibleKey` is already false when
 the `when` clause is evaluated and the binding never matches. That was a real
