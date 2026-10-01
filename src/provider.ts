@@ -25,7 +25,7 @@ function suppressed(): vscode.SignatureHelp {
 }
 
 /** How long a call site's signatures stay usable after the last successful fetch. */
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 300_000;
 const CACHE_MAX_ENTRIES = 50;
 
 /** Hard bound on nesting through `executeSignatureHelpProvider`. */
@@ -102,7 +102,9 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	};
 
 	/** The answer fetched ahead for the cursor's position (see `warm`). */
-	private warmed: { marker: string; version: number; help: Promise<vscode.SignatureHelp | undefined> } | undefined;
+	private warmed:
+		| { marker: string; version: number; help: Promise<vscode.SignatureHelp | undefined>; done: boolean }
+		| undefined;
 
 	constructor(
 		private readonly theme: ThemeColors,
@@ -166,7 +168,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 
 		const site = call && callKey(document, call);
 		const started = Date.now();
-		const upstream = await this.race(document, position, site, config);
+		const upstream = await this.race(document, position, site, config, !context?.isRetrigger);
 		this.lastUpstreamMs = Date.now() - started;
 		// The language server can take seconds on numpy, and Escape may have left
 		// Insert mode meanwhile: an answer landing now would open in Normal mode.
@@ -216,16 +218,22 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		position: vscode.Position,
 		site: string | undefined,
 		config: vscode.WorkspaceConfiguration,
+		opening: boolean,
 	): Promise<vscode.SignatureHelp | undefined> {
 		// Asked ahead of time for this very position and revision: nothing to wait for.
 		const warmed = this.warmed;
-		const pending =
-			warmed?.marker === key(document, position) && warmed.version === document.version
-				? warmed.help
-				: this.fetchUpstream(document, position, site);
+		const exact = warmed?.marker === key(document, position) && warmed.version === document.version;
+		const pending = exact ? warmed.help : this.fetchUpstream(document, position, site);
 		const deadline = config.get<number>('upstreamTimeoutMs', 250);
 		if (deadline <= 0 || !site || !this.recall(site)) {
 			return pending;
+		}
+		// Opening the popup on a call whose signatures are already known, with
+		// no answer ready for this exact position (`a`, `A`, `o` from Normal
+		// mode, or coming back to a call): show them now rather than wait. The
+		// fetch still runs and its answer serves the next keystroke.
+		if (opening && !(exact && warmed.done)) {
+			return undefined;
 		}
 
 		let timer: ReturnType<typeof setTimeout>;
@@ -254,7 +262,11 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		if (this.warmed?.marker === marker && this.warmed.version === document.version) {
 			return;
 		}
-		this.warmed = { marker, version: document.version, help: this.fetchUpstream(document, position, site) };
+		const slot = { marker, version: document.version, help: this.fetchUpstream(document, position, site), done: false };
+		void slot.help.then(() => {
+			slot.done = true;
+		});
+		this.warmed = slot;
 	}
 
 	private trace(config: vscode.WorkspaceConfiguration, message: string): void {

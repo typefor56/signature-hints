@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.21.1
+
+- **Every way into Insert mode opens the popup at once**, not only `i`: `a`,
+  `A`, `I`, `o`, `O` under VSCodeVim, and coming back to a call seen before.
+  When the popup opens on a call whose signatures are already known, they are
+  shown right away and the language server's answer serves the next keystroke.
+  Measured with a server answering in 300 ms: 330 → 70–125 ms. Signatures are
+  remembered for 5 minutes per call site (was 30 seconds).
+
 ## 0.21.0
 
 - **The popup opens sooner.** The language server is now asked as soon as the

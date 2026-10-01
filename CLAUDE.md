@@ -205,6 +205,15 @@ promise when asked for the same position and document version (one slot).
 add requests. Measured with real keys and a 300 ms server: `i` in a call
 500 → 90 ms, Insert mode 440 → 340 ms.
 
+**Opening on a known call shows the cache at once.** `a`, `A`, `I`, `o`, `O`
+land on another position (or document version) than the warmed one, and the
+leading-edge warm they fire would make the provider wait for the server again.
+So when the popup is opening (`!context.isRetrigger`), the call site is cached
+and no *finished* answer exists for the exact position, `race()` returns nothing
+and `settle()` renders the cache (active parameter by comma count); the fetch
+runs on for the next keystroke. Retriggers keep the deadline race, so typing
+still gets the server's own active parameter. 330 → 70–125 ms for those keys.
+
 **Both `Escape` bindings hand the key on to VSCodeVim.** Two extensions binding
 the same key have no guaranteed order, and these win over VSCodeVim's
 `extension.vim_escape`: on their own they closed the popup and left Vim in
