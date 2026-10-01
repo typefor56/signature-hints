@@ -213,6 +213,9 @@ and no *finished* answer exists for the exact position, `race()` returns nothing
 and `settle()` renders the cache (active parameter by comma count); the fetch
 runs on for the next keystroke. Retriggers keep the deadline race, so typing
 still gets the server's own active parameter. 330 → 70–125 ms for those keys.
+In Normal mode the settled pass also prefetches the call at **cursor + 1**
+(`provider.prefetch`, cache only) when it is another call site: the block
+cursor on `(` is still outside the call, but `a` lands inside it.
 
 **Both `Escape` bindings hand the key on to VSCodeVim.** Two extensions binding
 the same key have no guaranteed order, and these win over VSCodeVim's

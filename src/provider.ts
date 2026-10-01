@@ -269,6 +269,13 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		this.warmed = slot;
 	}
 
+	/** Remembers a call site's signatures without holding the `warm` slot. */
+	prefetch(document: vscode.TextDocument, position: vscode.Position, site: string): void {
+		if (!this.recall(site)) {
+			void this.fetchUpstream(document, position, site);
+		}
+	}
+
 	private trace(config: vscode.WorkspaceConfiguration, message: string): void {
 		if (config.get<boolean>('trace', false)) {
 			this.log.appendLine(`[${new Date().toISOString().slice(11, 23)}] ${message}`);

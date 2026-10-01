@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.21.2
+
+- **`a` on a call's opening parenthesis opens the popup at once too.** In
+  Normal mode the cursor on `(` is not in the call yet, so nothing was fetched
+  ahead and `a` waited for the language server (about 360 ms against 70 ms
+  elsewhere). The position `a` lands on is now fetched ahead as well.
+
 ## 0.21.1
 
 - **Every way into Insert mode opens the popup at once**, not only `i`: `a`,

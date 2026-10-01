@@ -212,8 +212,12 @@ class Reopener {
 		this.timer = setTimeout(() => this.run(event.textEditor), REOPEN_DEBOUNCE_MS);
 	}
 
-	/** Fetches the signatures of the call under the cursor ahead of the popup. */
-	private warm(editor: vscode.TextEditor): void {
+	/**
+	 * Fetches the signatures of the call under the cursor ahead of the popup.
+	 * `ahead` is for Normal mode, where `a` lands one character further: on the
+	 * opening parenthesis the cursor is not in the call yet, but `a` will be.
+	 */
+	private warm(editor: vscode.TextEditor, ahead = false): void {
 		if (editor !== vscode.window.activeTextEditor || !editor.selection.isEmpty) {
 			return;
 		}
@@ -224,8 +228,20 @@ class Reopener {
 		const position = editor.selection.active;
 		const call = resolveCall(editor.document, position);
 		const exclude = excludePatterns(config.get<ExcludeSetting>('exclude'), editor.document.languageId);
-		if (call && !isExcluded(call.name, exclude)) {
-			this.provider.warm(editor.document, position, callKey(editor.document, call));
+		const site = call && !isExcluded(call.name, exclude) ? callKey(editor.document, call) : undefined;
+		if (site) {
+			this.provider.warm(editor.document, position, site);
+		}
+		if (!ahead || position.character >= editor.document.lineAt(position.line).text.length) {
+			return;
+		}
+		const next = position.translate(0, 1);
+		const nextCall = resolveCall(editor.document, next);
+		if (nextCall && !isExcluded(nextCall.name, exclude)) {
+			const nextSite = callKey(editor.document, nextCall);
+			if (nextSite !== site) {
+				this.provider.prefetch(editor.document, next, nextSite);
+			}
 		}
 	}
 
@@ -281,8 +297,8 @@ class Reopener {
 		// count as arriving there.
 		if (editor !== vscode.window.activeTextEditor || !editor.selection.isEmpty || vimHoldsBack(editor)) {
 			this.lastCall = undefined;
-			// Normal mode, cursor at rest in a call: have the answer ready for `i`.
-			this.warm(editor);
+			// Normal mode, cursor at rest: have the answer ready for `i` and `a`.
+			this.warm(editor, true);
 			return;
 		}
 
