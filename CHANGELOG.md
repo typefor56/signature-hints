@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.21.0
+
+- **The popup opens sooner.** The language server is now asked as soon as the
+  cursor arrives in a call, instead of after the cursor has settled and VS Code
+  has asked in turn. Under VSCodeVim the answer is fetched while still in
+  Normal mode, so `i` inside a call opens the popup at once. Measured with a
+  server answering in 300 ms: `i` in a call 500 → 90 ms, moving into a call or
+  typing `(` in Insert mode 440 → 340 ms. The settle delay after a cursor move
+  goes from 120 to 50 ms.
+
 ## 0.20.2
 
 - **The VSCodeVim behaviour now works when VSCodeVim runs in another extension

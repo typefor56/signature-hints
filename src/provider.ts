@@ -101,6 +101,9 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		empty: 0,
 	};
 
+	/** The answer fetched ahead for the cursor's position (see `warm`). */
+	private warmed: { marker: string; version: number; help: Promise<vscode.SignatureHelp | undefined> } | undefined;
+
 	constructor(
 		private readonly theme: ThemeColors,
 		private readonly log: vscode.OutputChannel,
@@ -214,7 +217,12 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		site: string | undefined,
 		config: vscode.WorkspaceConfiguration,
 	): Promise<vscode.SignatureHelp | undefined> {
-		const pending = this.fetchUpstream(document, position, site);
+		// Asked ahead of time for this very position and revision: nothing to wait for.
+		const warmed = this.warmed;
+		const pending =
+			warmed?.marker === key(document, position) && warmed.version === document.version
+				? warmed.help
+				: this.fetchUpstream(document, position, site);
 		const deadline = config.get<number>('upstreamTimeoutMs', 250);
 		if (deadline <= 0 || !site || !this.recall(site)) {
 			return pending;
@@ -229,6 +237,24 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		} finally {
 			clearTimeout(timer!);
 		}
+	}
+
+	/**
+	 * Asks the language server before VS Code asks us.
+	 *
+	 * Most of the wait for the popup is not the server: it is the time before
+	 * anyone asks — the settle delay after a cursor move, VS Code's own delay
+	 * after `(`, and under VSCodeVim the whole stay in Normal mode. Starting the
+	 * fetch when the cursor arrives lets those run in parallel, so the answer is
+	 * already there (or on its way) when the popup is wanted. One slot: only the
+	 * position the cursor is at can be asked for next.
+	 */
+	warm(document: vscode.TextDocument, position: vscode.Position, site: string): void {
+		const marker = key(document, position);
+		if (this.warmed?.marker === marker && this.warmed.version === document.version) {
+			return;
+		}
+		this.warmed = { marker, version: document.version, help: this.fetchUpstream(document, position, site) };
 	}
 
 	private trace(config: vscode.WorkspaceConfiguration, message: string): void {

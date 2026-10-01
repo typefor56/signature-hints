@@ -195,6 +195,16 @@ affinity and runs a single host. The proof is a normally launched VS Code under
 `parameterHintsVisible` / `vim.mode`: Normal → hidden; `i` in a call → visible;
 one `Escape` → hidden and Normal.
 
+**The server is asked ahead of the popup (`provider.warm`).** Most of the wait
+was not the server but the time before anyone asked: the reopener's settle
+delay, VS Code's own delay after `(`, and under VSCodeVim the whole stay in
+Normal mode. `Reopener` warms on the leading edge of every cursor move in Insert
+mode, and once the cursor has settled in Normal mode; `race()` reuses that
+promise when asked for the same position and document version (one slot).
+`fetchUpstream` already shares one request per call site, so typing does not
+add requests. Measured with real keys and a 300 ms server: `i` in a call
+500 → 90 ms, Insert mode 440 → 340 ms.
+
 **Both `Escape` bindings hand the key on to VSCodeVim.** Two extensions binding
 the same key have no guaranteed order, and these win over VSCodeVim's
 `extension.vim_escape`: on their own they closed the popup and left Vim in

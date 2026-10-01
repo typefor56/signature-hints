@@ -147,7 +147,7 @@ class Registration {
 }
 
 /** Settles before probing the call site, so held arrow keys cost one check. */
-const REOPEN_DEBOUNCE_MS = 120;
+const REOPEN_DEBOUNCE_MS = 50;
 
 /** Minimum gap between two attempts to replace a popup that is not ours. */
 const NUDGE_THROTTLE_MS = 1000;
@@ -203,8 +203,30 @@ class Reopener {
 	schedule(event: vscode.TextEditorSelectionChangeEvent): void {
 		// Leading edge, every time, before anything else can return early.
 		this.keepLead(event.textEditor);
+		// In Insert mode the popup is wanted now: ask the server without waiting
+		// for the cursor to settle. In Normal mode, `run` asks once it has.
+		if (!vimHoldsBack(event.textEditor)) {
+			this.warm(event.textEditor);
+		}
 		clearTimeout(this.timer);
 		this.timer = setTimeout(() => this.run(event.textEditor), REOPEN_DEBOUNCE_MS);
+	}
+
+	/** Fetches the signatures of the call under the cursor ahead of the popup. */
+	private warm(editor: vscode.TextEditor): void {
+		if (editor !== vscode.window.activeTextEditor || !editor.selection.isEmpty) {
+			return;
+		}
+		const config = vscode.workspace.getConfiguration('signatureHints', editor.document);
+		if (!config.get<boolean>('enabled', true) || config.get<Mode>('mode', 'signature') === 'none') {
+			return;
+		}
+		const position = editor.selection.active;
+		const call = resolveCall(editor.document, position);
+		const exclude = excludePatterns(config.get<ExcludeSetting>('exclude'), editor.document.languageId);
+		if (call && !isExcluded(call.name, exclude)) {
+			this.provider.warm(editor.document, position, callKey(editor.document, call));
+		}
 	}
 
 	/**
@@ -259,6 +281,8 @@ class Reopener {
 		// count as arriving there.
 		if (editor !== vscode.window.activeTextEditor || !editor.selection.isEmpty || vimHoldsBack(editor)) {
 			this.lastCall = undefined;
+			// Normal mode, cursor at rest in a call: have the answer ready for `i`.
+			this.warm(editor);
 			return;
 		}
 
