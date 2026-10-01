@@ -329,6 +329,11 @@ export function activate(context: vscode.ExtensionContext): void {
 	provider.onServed = (language) => registration.markServed(language);
 	registration.refresh();
 	registration.chase();
+	// VSCodeVim may start after this extension: look again for a while.
+	void detectVim();
+	for (const delay of [2_000, 10_000, 30_000]) {
+		setTimeout(() => void detectVim(), delay);
+	}
 
 	// Hovers from every provider are shown together, so this one needs no
 	// priority games — unlike signature help, which stops at the first result.
@@ -346,8 +351,13 @@ export function activate(context: vscode.ExtensionContext): void {
 		// VSCodeVim changes the cursor style on every mode change. Leaving Insert
 		// (Escape, Ctrl-[, a mapping…) closes the popup; entering it inside a
 		// call opens it, as arriving there by typing would.
-		vscode.window.onDidChangeTextEditorOptions((event) => {
-			if (event.textEditor !== vscode.window.activeTextEditor || !vimInstalled()) {
+		vscode.window.onDidChangeTextEditorOptions(async (event) => {
+			// A cursor style changing is VSCodeVim's doing: look for it again if
+			// it had not started when this extension did.
+			if (!vimPresent) {
+				await detectVim();
+			}
+			if (event.textEditor !== vscode.window.activeTextEditor || !vimPresent) {
 				return;
 			}
 			if (vimHoldsBack(event.textEditor)) {
@@ -366,6 +376,7 @@ export function activate(context: vscode.ExtensionContext): void {
 			}
 		}),
 		vscode.extensions.onDidChange(() => {
+			void detectVim();
 			registration.refresh();
 			registration.chase();
 		}),
@@ -471,7 +482,10 @@ function dismissHover(): void {
  * no-op; without VSCodeVim, nothing runs.
  */
 async function vimEscape(): Promise<void> {
-	if (!vimInstalled()) {
+	if (!vimPresent) {
+		await detectVim();
+	}
+	if (!vimPresent) {
 		return;
 	}
 	try {
@@ -482,11 +496,15 @@ async function vimEscape(): Promise<void> {
 }
 
 /**
- * Installed, not `isActive`: with `extensions.experimental.affinity` VSCodeVim
- * runs in another extension host, where this one cannot see it activate.
+ * Whether VSCodeVim runs in this window, told by its command being registered.
+ * Not `extensions.getExtension`: with `extensions.experimental.affinity`
+ * VSCodeVim runs in another extension host, and from this one it does not
+ * exist at all — while commands are shared by every host.
  */
-function vimInstalled(): boolean {
-	return vscode.extensions.getExtension('vscodevim.vim') !== undefined;
+let vimPresent = false;
+
+async function detectVim(): Promise<void> {
+	vimPresent = (await vscode.commands.getCommands(true)).includes('extension.vim_escape');
 }
 
 /**
@@ -495,7 +513,7 @@ function vimInstalled(): boolean {
  * to Insert mode: in Normal mode the cursor merely passes through calls.
  */
 function vimHoldsBack(editor: vscode.TextEditor): boolean {
-	if (!vimInstalled()) {
+	if (!vimPresent) {
 		return false;
 	}
 	const vim = vscode.workspace.getConfiguration('vim');

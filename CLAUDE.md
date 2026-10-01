@@ -183,10 +183,17 @@ it cannot tell and holds nothing back. Outside Insert, `Reopener.run` triggers
 nothing and the provider answers `suppressed()` — truthy, so the language
 server's popup does not show either; `onDidChangeTextEditorOptions` closes the
 popup on leaving Insert and pokes the reopener on entering it. VSCodeVim is
-detected as *installed*, not `isActive`: under `extensions.experimental.affinity`
-it runs in another extension host, where `isActive` stays false. Verified in a
-real host: Normal cursor 2 (block) → no signature; `i` → cursor 1 (line) →
-signature.
+detected by **its command** (`getCommands` includes `extension.vim_escape`),
+never by `extensions.getExtension`: under `extensions.experimental.affinity` it
+runs in another extension host, and from this one `getExtension('vscodevim.vim')`
+is `undefined` — the extension believed there was no Vim and switched all of
+this off (0.19.2–0.20.1). Commands, editor options and configuration are shared
+by every host. **Extension tests cannot catch it**: the test host ignores
+affinity and runs a single host. The proof is a normally launched VS Code under
+`xvfb-run`, keys sent through `--remote-debugging-port`
+(`Input.dispatchKeyEvent`), state read back through keybindings gated on
+`parameterHintsVisible` / `vim.mode`: Normal → hidden; `i` in a call → visible;
+one `Escape` → hidden and Normal.
 
 **Both `Escape` bindings hand the key on to VSCodeVim.** Two extensions binding
 the same key have no guaranteed order, and these win over VSCodeVim's

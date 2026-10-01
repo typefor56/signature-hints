@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.20.2
+
+- **The VSCodeVim behaviour now works when VSCodeVim runs in another extension
+  host** (`extensions.experimental.affinity`, also set up by extensions that
+  depend on it). From there this extension could not see VSCodeVim, took it for
+  absent, and so showed the popup in Normal mode and needed a second `Escape`
+  to leave Insert mode. VSCodeVim is now detected by its command, which every
+  host shares. Without VSCodeVim nothing changes.
+
 ## 0.20.1
 
 - **No popup in Normal mode after a slow answer.** On numpy, the language
