@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.1
+
+- **No popup in Normal mode after a slow answer.** On numpy, the language
+  server can take seconds; an `Escape` pressed meanwhile left Insert mode, and
+  the answer then opened the popup in Normal mode (a second `Escape` was needed
+  to close it). The mode is now checked again once the answer arrives. Without
+  VSCodeVim nothing changes.
+
 ## 0.20.0
 
 - **With VSCodeVim, the popup only shows in Insert mode.** In Normal mode the

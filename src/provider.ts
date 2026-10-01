@@ -165,6 +165,13 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		const started = Date.now();
 		const upstream = await this.race(document, position, site, config);
 		this.lastUpstreamMs = Date.now() - started;
+		// The language server can take seconds on numpy, and Escape may have left
+		// Insert mode meanwhile: an answer landing now would open in Normal mode.
+		if (this.isHeldBack?.(document)) {
+			this.outcomes.suppressed++;
+			this.trace(config, 'Vim left Insert mode while waiting');
+			return suppressed();
+		}
 
 		const resolved = this.settle(site, call, upstream);
 		if (!resolved) {
