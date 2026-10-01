@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { importedRoots, positionalOnly } from './imports';
 import { CallSite, ExcludeSetting, excludePatterns, isExcluded, resolveCall } from './callsite';
 import { escapeText, formatDocumentation, parameterRange, renderSignatureHtml, RenderOptions } from './render';
 import { compactSignature } from './simplify';
@@ -229,6 +230,15 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		const exact = warmed?.marker === key(document, position) && warmed.version === document.version;
 		const pending = exact ? warmed.help : this.fetchUpstream(document, position, site);
 		const named = call && nameKey(call.name);
+		// Memory is only shown when it cannot be wrong: the callee comes from an
+		// import that is never bound again (so the name is that function wherever
+		// it is written), and the arguments so far are positional (so the comma
+		// count is the active parameter). Anything else waits for the server.
+		const trusted =
+			call !== undefined &&
+			document.languageId === 'python' &&
+			positionalOnly(document.getText(new vscode.Range(call.position, position)).replace(/^[^(]*\(/, '')) &&
+			importedRoots(surroundingSource(document)).has(call.name.split('.')[0] ?? '');
 		const deadline = config.get<number>('upstreamTimeoutMs', 250);
 		if (deadline <= 0 || !site) {
 			return pending;
@@ -237,24 +247,30 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		// the same callee's from elsewhere — with no answer ready for this exact
 		// position (a `(` just typed, `a`/`A`/`o` from Normal mode, coming back
 		// to a call): show them now rather than wait for the server.
-		const known = this.recall(site) ?? (named ? this.recall(named) : undefined);
+		const known = trusted ? (this.recall(site) ?? (named ? this.recall(named) : undefined)) : undefined;
 		if (opening && known && !(exact && warmed.done)) {
-			// The same name can be another function (`x.append` on another `x`),
-			// and the server knows the active parameter better than a comma
-			// count: when its answer differs from what was shown, hand it over.
+			// A safety net, not the plan: should the server still answer
+			// something else than what was shown, hand its answer over.
 			const version = document.version;
 			const shown = known.signatures.map((signature) => signature.label).join('\n');
-			const shownParameter = call?.activeParameter ?? 0;
+			// Signatures only. The active parameter must not be compared: Pylance's
+			// top-level one is not an argument index (9 for `np.linspace`, wherever
+			// the cursor is), so it never matches and the popup would be redrawn —
+			// a visible blink — on every single opening.
 			void pending.then((help) => {
 				const fresh = help?.signatures?.map((signature) => signature.label).join('\n') ?? '';
-				if (document.version !== version || (fresh === shown && (help?.activeParameter ?? 0) === shownParameter)) {
+				if (document.version !== version || fresh === shown) {
 					return;
 				}
 				this.warmed = { marker: key(document, position), version, help: Promise.resolve(help), done: true };
 				this.trace(config, `corrected ${call?.name ?? '?'}: the server's answer differs from the remembered one`);
 				this.onCorrected?.(document);
 			});
-			return { signatures: [...known.signatures], activeSignature: known.activeSignature, activeParameter: shownParameter };
+			return {
+				signatures: [...known.signatures],
+				activeSignature: known.activeSignature,
+				activeParameter: call?.activeParameter ?? 0,
+			};
 		}
 		if (!this.recall(site)) {
 			return pending;
@@ -645,6 +661,19 @@ function clamp(index: number | undefined, length: number): number {
 /** Identifies a call site, stable while the cursor moves through its arguments. */
 export function callKey(document: vscode.TextDocument, call: CallSite): string {
 	return `${document.uri.toString()}|${call.name}|${call.position.line}|${call.position.character}`;
+}
+
+/** The whole notebook for a cell (imports live in another cell), else the file. */
+function surroundingSource(document: vscode.TextDocument): string {
+	const notebook = vscode.workspace.notebookDocuments.find((candidate) =>
+		candidate.getCells().some((cell) => cell.document === document),
+	);
+	return notebook
+		? notebook
+				.getCells()
+				.map((cell) => cell.document.getText())
+				.join('\n')
+		: document.getText();
 }
 
 function nameKey(name: string): string {

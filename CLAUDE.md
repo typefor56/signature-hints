@@ -229,6 +229,20 @@ call, not outside Insert mode). The retrigger finds the slot exact and done, so
 it cannot loop. `settle()`'s own fallback stays call-site only: a name entry is
 never replayed when the server answers nothing.
 
+**Memory is only shown when it cannot be wrong (`src/imports.ts`, 0.22.1).**
+Two rules, both lexical and conservative: the callee's root name is bound by an
+`import` and by nothing else in the file — or in the whole notebook, imports
+live in another cell — and the arguments before the cursor are positional (no
+`=`, no `*`). Otherwise the opening path is skipped and the server is awaited.
+Python only. Tried and measured instead of the name: asking Pylance for the
+callee's *definition* to key the cache on — after an edit it costs as much as
+the signature itself (120–350 ms), the time is the re-analysis, so nothing is
+gained. **Never compare active parameters with Pylance's**: its top-level
+`activeParameter` is not an argument index (9 for `np.linspace` at any
+position; the real one is on the signature), so a comparison never matches and
+the correction re-triggered — a visible blink — on every opening. The
+correction compares signature labels only and is a safety net.
+
 **Both `Escape` bindings hand the key on to VSCodeVim.** Two extensions binding
 the same key have no guaranteed order, and these win over VSCodeVim's
 `extension.vim_escape`: on their own they closed the popup and left Vim in

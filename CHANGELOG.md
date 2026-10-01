@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.22.1
+
+- **The popup no longer blinks right after it opens.** 0.22.0 compared the
+  remembered answer with the language server's, active parameter included —
+  but Pylance's top-level active parameter is not an argument index (9 for
+  `np.linspace`, wherever the cursor is), so the two never matched and the
+  popup was redrawn on every opening. Only the signatures are compared now.
+- **Remembered signatures are only shown when they cannot be wrong.** The
+  callee has to come from an `import` that is never bound again (`np.…`,
+  `plt.…`, `from numpy import linspace`), so the name is that function wherever
+  it is written, and the arguments typed so far have to be positional. A
+  method of a variable (`df.plot(`, `x.append(`) or a local function waits for
+  the language server, as before 0.22.0: no stale signature is ever shown for
+  them. Python only.
+
 ## 0.22.0
 
 - **Typing `(` after a function seen before opens the popup at once.**

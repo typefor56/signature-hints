@@ -336,5 +336,18 @@ check('vim: editor cursorStyle used for Insert', isOutsideInsert(cursorStyleOf('
 check('vim: same style for both modes holds nothing back', isOutsideInsert(BLOCK, 'block', undefined, 'block'), false);
 check('vim: unknown cursor style holds nothing back', isOutsideInsert(undefined, '', undefined, ''), false);
 
+const { importedRoots, positionalOnly } = require(path.join(OUT, 'imports.js'));
+const roots = (source) => [...importedRoots(source)].sort().join(',');
+check('imports: import, alias, dotted, from', roots('import numpy as np\nimport os, sys\nimport matplotlib.pyplot as plt\nimport a.b\nfrom numpy import linspace, array as arr\n'), 'a,arr,linspace,np,os,plt,sys');
+check('imports: indented and parenthesised', roots('def f():\n    import json\nfrom m import (x, y)\n'), 'json,x,y');
+check('imports: a variable is not an import', roots('import numpy as np\ndf = np.ones(3)\n'), 'np');
+check('imports: rebound by assignment, def or class', roots('import a, b, c, d\na = 1\ndef b(): pass\nclass c: pass\nd: int = 2\n'), '');
+check('imports: comparison is not an assignment', roots('import a\na == 1\n'), 'a');
+check('imports: star import binds nothing', roots('from m import *\n'), '');
+check('positional: plain arguments', positionalOnly('0, 10, '), true);
+check('positional: keyword argument', positionalOnly('0, num=50, '), false);
+check('positional: unpacking', positionalOnly('*args, '), false);
+check('positional: multiplication is fine', positionalOnly('2 * x, '), true);
+
 console.log(`\n${failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'}`);
 process.exit(failures ? 1 : 0);
