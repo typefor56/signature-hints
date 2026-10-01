@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.20.0
+
+- **With VSCodeVim, the popup only shows in Insert mode.** In Normal mode the
+  cursor passes through calls without opening anything; entering Insert inside
+  a call opens it, and leaving Insert by any key closes it. The mode is read
+  from the cursor style VSCodeVim sets per mode.
+- `Escape` on the popup now reaches VSCodeVim even when it runs in another
+  extension host (`extensions.experimental.affinity`).
+
 ## 0.19.2
 
 - **`Escape` with VSCodeVim closes the popup and returns to Normal mode.** The

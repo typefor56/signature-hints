@@ -81,6 +81,12 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	 */
 	onServed: ((languageId: string) => void) | undefined;
 	/**
+	 * True while VSCodeVim is out of Insert mode on this document: the popup is
+	 * then held back entirely — answering empty stops the chain, so the language
+	 * server's own popup does not show either.
+	 */
+	isHeldBack: ((document: vscode.TextDocument) => boolean) | undefined;
+	/**
 	 * Tally of how each call ended. Losing the race and being reached but
 	 * returning nothing look identical from the outside — the built-in popup
 	 * shows either way — so the two have to be told apart from in here.
@@ -134,6 +140,11 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 			this.outcomes.disabled++;
 			this.trace(config, 'disabled');
 			return undefined;
+		}
+		if (this.isHeldBack?.(document)) {
+			this.outcomes.suppressed++;
+			this.trace(config, 'Vim is not in Insert mode');
+			return suppressed();
 		}
 		const mode = config.get<Mode>('mode', 'signature');
 		if (mode === 'none') {

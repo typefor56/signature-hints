@@ -325,5 +325,16 @@ check('markdown gets hard breaks',
   'Returns x.  \nsep  \n  the separator  ');
 check('markdown fence left alone', formatDocumentation({ value: '```py\na = 1\n```' }, 0), '```py\na = 1\n```');
 
+// --- VSCodeVim mode from the cursor style (vimMode.ts) ---
+const { isOutsideInsert, cursorStyleOf } = require(path.join(OUT, 'vimMode.js'));
+const LINE = cursorStyleOf('line');
+const BLOCK = cursorStyleOf('block');
+check('vim defaults: block cursor is Normal', isOutsideInsert(BLOCK, '', undefined, ''), true);
+check('vim defaults: line cursor is Insert', isOutsideInsert(LINE, '', undefined, ''), false);
+check('vim: Insert style set to block-outline', isOutsideInsert(cursorStyleOf('block-outline'), 'block-outline', 'line', 'block'), false);
+check('vim: editor cursorStyle used for Insert', isOutsideInsert(cursorStyleOf('underline'), '', 'underline', ''), false);
+check('vim: same style for both modes holds nothing back', isOutsideInsert(BLOCK, 'block', undefined, 'block'), false);
+check('vim: unknown cursor style holds nothing back', isOutsideInsert(undefined, '', undefined, ''), false);
+
 console.log(`\n${failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'}`);
 process.exit(failures ? 1 : 0);

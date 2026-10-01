@@ -174,11 +174,25 @@ has no default keybinding. `Escape` closes the hover from the controller's
 other `Escape` binding fires too. Harmless in a plain editor; in a notebook
 `notebook.cell.quitEdit` also runs and drops you out of the cell.
 
+**With VSCodeVim the popup is Insert-mode only.** No API exposes Vim's mode
+(`vim.mode` is a context key, `when` clauses only), but VSCodeVim sets
+`editor.options.cursorStyle` per mode, readable by any extension:
+`src/vimMode.ts` compares it with the Insert style (`vim.cursorStylePerMode.insert`
+‖ `editor.cursorStyle` ‖ line) and the Normal one (‖ block); equal styles mean
+it cannot tell and holds nothing back. Outside Insert, `Reopener.run` triggers
+nothing and the provider answers `suppressed()` — truthy, so the language
+server's popup does not show either; `onDidChangeTextEditorOptions` closes the
+popup on leaving Insert and pokes the reopener on entering it. VSCodeVim is
+detected as *installed*, not `isActive`: under `extensions.experimental.affinity`
+it runs in another extension host, where `isActive` stays false. Verified in a
+real host: Normal cursor 2 (block) → no signature; `i` → cursor 1 (line) →
+signature.
+
 **Both `Escape` bindings hand the key on to VSCodeVim.** Two extensions binding
 the same key have no guaranteed order, and these win over VSCodeVim's
 `extension.vim_escape`: on their own they closed the popup and left Vim in
 Insert mode. `vimEscape()` in `src/extension.ts` runs `extension.vim_escape`
-after closing, when VSCodeVim is active (a no-op in Normal mode). Verified in a
+after closing, when VSCodeVim is installed (a no-op in Normal mode). Verified in a
 real extension host with VSCodeVim: Insert, `ab`, dismiss, `x` deletes a
 character instead of inserting one.
 

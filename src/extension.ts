@@ -3,6 +3,7 @@ import { ExcludeSetting, excludePatterns, isExcluded, resolveCall, resolveCallNa
 import { CallDocsHoverProvider } from './hover';
 import { callKey, SignatureHintsProvider } from './provider';
 import { ThemeColors } from './theme';
+import { isOutsideInsert } from './vimMode';
 
 type Mode = 'signature' | 'doc' | 'both' | 'none';
 
@@ -246,8 +247,17 @@ class Reopener {
 		this.registration.reclaim(editor.document);
 	}
 
+	/** Run the pass now-ish without a cursor move: Vim just entered Insert mode. */
+	poke(editor: vscode.TextEditor): void {
+		clearTimeout(this.timer);
+		this.timer = setTimeout(() => this.run(editor), REOPEN_DEBOUNCE_MS);
+	}
+
 	private run(editor: vscode.TextEditor): void {
-		if (editor !== vscode.window.activeTextEditor || !editor.selection.isEmpty) {
+		// Outside Insert mode the cursor travels through calls without editing
+		// them: no popup. Forgetting the call makes re-entering Insert inside it
+		// count as arriving there.
+		if (editor !== vscode.window.activeTextEditor || !editor.selection.isEmpty || vimHoldsBack(editor)) {
 			this.lastCall = undefined;
 			return;
 		}
@@ -311,6 +321,10 @@ export function activate(context: vscode.ExtensionContext): void {
 	theme.reload();
 
 	const provider = new SignatureHintsProvider(theme, log);
+	provider.isHeldBack = (document) => {
+		const editor = vscode.window.activeTextEditor;
+		return editor !== undefined && editor.document === document && vimHoldsBack(editor);
+	};
 	const registration = new Registration(provider);
 	provider.onServed = (language) => registration.markServed(language);
 	registration.refresh();
@@ -328,6 +342,19 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.window.onDidChangeTextEditorSelection((event) => {
 			setHoverShown(false);
 			reopener.schedule(event);
+		}),
+		// VSCodeVim changes the cursor style on every mode change. Leaving Insert
+		// (Escape, Ctrl-[, a mapping…) closes the popup; entering it inside a
+		// call opens it, as arriving there by typing would.
+		vscode.window.onDidChangeTextEditorOptions((event) => {
+			if (event.textEditor !== vscode.window.activeTextEditor || !vimInstalled()) {
+				return;
+			}
+			if (vimHoldsBack(event.textEditor)) {
+				void vscode.commands.executeCommand('closeParameterHints');
+			} else {
+				reopener.poke(event.textEditor);
+			}
 		}),
 		// An edit invalidates whatever is on screen. Staying first means we render
 		// again right away; staying stale means the popup is not ours.
@@ -444,9 +471,40 @@ function dismissHover(): void {
  * no-op; without VSCodeVim, nothing runs.
  */
 async function vimEscape(): Promise<void> {
-	if (vscode.extensions.getExtension('vscodevim.vim')?.isActive) {
-		await vscode.commands.executeCommand('extension.vim_escape');
+	if (!vimInstalled()) {
+		return;
 	}
+	try {
+		await vscode.commands.executeCommand('extension.vim_escape');
+	} catch {
+		// VSCodeVim not started yet: its command is not registered.
+	}
+}
+
+/**
+ * Installed, not `isActive`: with `extensions.experimental.affinity` VSCodeVim
+ * runs in another extension host, where this one cannot see it activate.
+ */
+function vimInstalled(): boolean {
+	return vscode.extensions.getExtension('vscodevim.vim') !== undefined;
+}
+
+/**
+ * VSCodeVim is out of Insert mode in this editor (Normal, Visual…), read from
+ * the cursor style it sets per mode (see vimMode.ts). The popup only belongs
+ * to Insert mode: in Normal mode the cursor merely passes through calls.
+ */
+function vimHoldsBack(editor: vscode.TextEditor): boolean {
+	if (!vimInstalled()) {
+		return false;
+	}
+	const vim = vscode.workspace.getConfiguration('vim');
+	return isOutsideInsert(
+		editor.options.cursorStyle,
+		vim.get<string>('cursorStylePerMode.insert'),
+		vscode.workspace.getConfiguration('editor', editor.document).get<string>('cursorStyle'),
+		vim.get<string>('cursorStylePerMode.normal'),
+	);
 }
 
 async function toggle(): Promise<void> {
