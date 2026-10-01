@@ -29,6 +29,9 @@ function suppressed(): vscode.SignatureHelp {
 const CACHE_TTL_MS = 300_000;
 const CACHE_MAX_ENTRIES = 100;
 
+/** Positions whose answer is kept ready: the cursor's and the one `a` lands on, for the last two stops. */
+const WARM_SLOTS = 4;
+
 /** Hard bound on nesting through `executeSignatureHelpProvider`. */
 const MAX_NESTED_FETCHES = 4;
 
@@ -106,9 +109,10 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	};
 
 	/** The answer fetched ahead for the cursor's position (see `warm`). */
-	private warmed:
-		| { marker: string; version: number; help: Promise<vscode.SignatureHelp | undefined>; done: boolean }
-		| undefined;
+	private readonly warmed = new Map<
+		string,
+		{ version: number; help: Promise<vscode.SignatureHelp | undefined>; done: boolean }
+	>();
 
 	constructor(
 		private readonly theme: ThemeColors,
@@ -226,8 +230,8 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		opening: boolean,
 	): Promise<vscode.SignatureHelp | undefined> {
 		// Asked ahead of time for this very position and revision: nothing to wait for.
-		const warmed = this.warmed;
-		const exact = warmed?.marker === key(document, position) && warmed.version === document.version;
+		const warmed = this.warmed.get(key(document, position));
+		const exact = warmed?.version === document.version;
 		const pending = exact ? warmed.help : this.fetchUpstream(document, position, site);
 		const named = call && nameKey(call.name);
 		// Memory is only shown when it cannot be wrong: the callee comes from an
@@ -262,7 +266,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 				if (document.version !== version || fresh === shown) {
 					return;
 				}
-				this.warmed = { marker: key(document, position), version, help: Promise.resolve(help), done: true };
+				this.warmed.set(key(document, position), { version, help: Promise.resolve(help), done: true });
 				this.trace(config, `corrected ${call?.name ?? '?'}: the server's answer differs from the remembered one`);
 				this.onCorrected?.(document);
 			});
@@ -294,26 +298,41 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	 * anyone asks — the settle delay after a cursor move, VS Code's own delay
 	 * after `(`, and under VSCodeVim the whole stay in Normal mode. Starting the
 	 * fetch when the cursor arrives lets those run in parallel, so the answer is
-	 * already there (or on its way) when the popup is wanted. One slot: only the
-	 * position the cursor is at can be asked for next.
+	 * already there (or on its way) when the popup is wanted. A few slots: in
+	 * Normal mode `i` lands on the cursor and `a` one character further, and
+	 * both get their own answer.
+	 *
+	 * `after` queues this fetch behind another one. Requests for one call site
+	 * are shared while in flight, so two positions asked at once would get the
+	 * same answer — the first position's.
 	 */
-	warm(document: vscode.TextDocument, position: vscode.Position, site: string): void {
+	warm(
+		document: vscode.TextDocument,
+		position: vscode.Position,
+		site: string,
+		after?: Promise<unknown>,
+	): Promise<unknown> {
 		const marker = key(document, position);
-		if (this.warmed?.marker === marker && this.warmed.version === document.version) {
-			return;
+		const existing = this.warmed.get(marker);
+		if (existing?.version === document.version) {
+			return existing.help;
 		}
-		const slot = { marker, version: document.version, help: this.fetchUpstream(document, position, site), done: false };
+		const fetch = () => this.fetchUpstream(document, position, site);
+		const slot = { version: document.version, help: after ? after.then(fetch, fetch) : fetch(), done: false };
 		void slot.help.then(() => {
 			slot.done = true;
 		});
-		this.warmed = slot;
-	}
-
-	/** Remembers a call site's signatures without holding the `warm` slot. */
-	prefetch(document: vscode.TextDocument, position: vscode.Position, site: string): void {
-		if (!this.recall(site)) {
-			void this.fetchUpstream(document, position, site);
+		this.warmed.delete(marker);
+		this.warmed.set(marker, slot);
+		// Map iterates in insertion order, so this drops the oldest.
+		while (this.warmed.size > WARM_SLOTS) {
+			const oldest = this.warmed.keys().next().value;
+			if (oldest === undefined) {
+				break;
+			}
+			this.warmed.delete(oldest);
 		}
+		return slot.help;
 	}
 
 	private trace(config: vscode.WorkspaceConfiguration, message: string): void {

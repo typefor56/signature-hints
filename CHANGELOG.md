@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.22.2
+
+- **`a` is as immediate as `i` for every callee.** In Normal mode only the
+  cursor's own position — where `i` lands — had its answer fetched ahead; `a`
+  lands one character further, so for a method of a variable or a local
+  function it waited for the language server. Both positions are now fetched
+  ahead (about 340 → 90 ms with a server answering in 300 ms).
+
 ## 0.22.1
 
 - **The popup no longer blinks right after it opens.** 0.22.0 compared the

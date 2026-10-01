@@ -214,8 +214,9 @@ class Reopener {
 
 	/**
 	 * Fetches the signatures of the call under the cursor ahead of the popup.
-	 * `ahead` is for Normal mode, where `a` lands one character further: on the
-	 * opening parenthesis the cursor is not in the call yet, but `a` will be.
+	 * `ahead` is for Normal mode, where `a` lands one character further than
+	 * `i` — and on the opening parenthesis the cursor is not in the call yet,
+	 * but `a` will be. Both positions get their own answer.
 	 */
 	private warm(editor: vscode.TextEditor, ahead = false): void {
 		if (editor !== vscode.window.activeTextEditor || !editor.selection.isEmpty) {
@@ -229,19 +230,14 @@ class Reopener {
 		const call = resolveCall(editor.document, position);
 		const exclude = excludePatterns(config.get<ExcludeSetting>('exclude'), editor.document.languageId);
 		const site = call && !isExcluded(call.name, exclude) ? callKey(editor.document, call) : undefined;
-		if (site) {
-			this.provider.warm(editor.document, position, site);
-		}
+		const first = site ? this.provider.warm(editor.document, position, site) : undefined;
 		if (!ahead || position.character >= editor.document.lineAt(position.line).text.length) {
 			return;
 		}
 		const next = position.translate(0, 1);
 		const nextCall = resolveCall(editor.document, next);
 		if (nextCall && !isExcluded(nextCall.name, exclude)) {
-			const nextSite = callKey(editor.document, nextCall);
-			if (nextSite !== site) {
-				this.provider.prefetch(editor.document, next, nextSite);
-			}
+			void this.provider.warm(editor.document, next, callKey(editor.document, nextCall), first);
 		}
 	}
 

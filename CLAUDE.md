@@ -213,9 +213,13 @@ and no *finished* answer exists for the exact position, `race()` returns nothing
 and `settle()` renders the cache (active parameter by comma count); the fetch
 runs on for the next keystroke. Retriggers keep the deadline race, so typing
 still gets the server's own active parameter. 330 → 70–125 ms for those keys.
-In Normal mode the settled pass also prefetches the call at **cursor + 1**
-(`provider.prefetch`, cache only) when it is another call site: the block
-cursor on `(` is still outside the call, but `a` lands inside it.
+In Normal mode the settled pass warms **two exact positions**: the cursor's
+(`i`) and cursor + 1 (`a` — which on `(` is the first position inside the
+call). The second fetch is queued behind the first (`after`): requests for one
+call site are shared while in flight, so asking both at once would hand the
+second position the first one's answer. `warmed` is a small map (`WARM_SLOTS`).
+Exact answers need no trust rule, so `i` and `a` are immediate for variables'
+methods and local functions too; `A`, `I`, `o`, `O` are only for imported names.
 
 **Signatures are also cached by callee name** (`name|<name>`, written by
 `remember()` next to the call-site entry). A `(` just typed has no call-site
