@@ -217,6 +217,18 @@ In Normal mode the settled pass also prefetches the call at **cursor + 1**
 (`provider.prefetch`, cache only) when it is another call site: the block
 cursor on `(` is still outside the call, but `a` lands inside it.
 
+**Signatures are also cached by callee name** (`name|<name>`, written by
+`remember()` next to the call-site entry). A `(` just typed has no call-site
+entry, so opening falls back on the name: the second `np.linspace(` of a
+session opens in ~75 ms instead of the server's time. The name can lie
+(`x.append` on another `x`) and a comma count is not the server's active
+parameter, so the opening path compares the fetch it left running with what it
+showed; on a difference it parks the answer in the `warm` slot and calls
+`onCorrected` → `Reopener.correct()` re-triggers (not after an `Escape` on that
+call, not outside Insert mode). The retrigger finds the slot exact and done, so
+it cannot loop. `settle()`'s own fallback stays call-site only: a name entry is
+never replayed when the server answers nothing.
+
 **Both `Escape` bindings hand the key on to VSCodeVim.** Two extensions binding
 the same key have no guaranteed order, and these win over VSCodeVim's
 `extension.vim_escape`: on their own they closed the popup and left Vim in

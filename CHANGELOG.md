@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.22.0
+
+- **Typing `(` after a function seen before opens the popup at once.**
+  Signatures are now also remembered by callee name, so the second
+  `np.linspace(` of a session — on any line, in any cell — no longer waits for
+  the language server (about 350 → 75 ms with a server answering in 300 ms).
+  The first one still takes the server's time: there is nothing to reuse yet.
+- **The popup corrects itself.** When it opens on remembered signatures and
+  the server then answers something else — the same name bound to another
+  function, or another active parameter — it is re-rendered with the server's
+  answer as soon as that arrives.
+
 ## 0.21.2
 
 - **`a` on a call's opening parenthesis opens the popup at once too.** In

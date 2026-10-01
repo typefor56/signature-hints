@@ -285,6 +285,22 @@ class Reopener {
 		this.registration.reclaim(editor.document);
 	}
 
+	/**
+	 * The popup opened on remembered signatures and the server has since
+	 * answered something else: ask again, the answer is ready. Not after an
+	 * `Escape` on that call, and not once Vim has left Insert mode.
+	 */
+	correct(document: vscode.TextDocument): void {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor || editor.document !== document || vimHoldsBack(editor)) {
+			return;
+		}
+		const call = resolveCall(document, editor.selection.active);
+		if (call && this.dismissed !== callKey(document, call)) {
+			void vscode.commands.executeCommand('editor.action.triggerParameterHints');
+		}
+	}
+
 	/** Run the pass now-ish without a cursor move: Vim just entered Insert mode. */
 	poke(editor: vscode.TextEditor): void {
 		clearTimeout(this.timer);
@@ -379,6 +395,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	// priority games — unlike signature help, which stops at the first result.
 	const docs = new CallDocsHoverProvider();
 	const reopener = new Reopener(registration, provider);
+	provider.onCorrected = (document) => reopener.correct(document);
 
 	context.subscriptions.push(
 		log,

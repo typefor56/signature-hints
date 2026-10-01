@@ -26,7 +26,7 @@ function suppressed(): vscode.SignatureHelp {
 
 /** How long a call site's signatures stay usable after the last successful fetch. */
 const CACHE_TTL_MS = 300_000;
-const CACHE_MAX_ENTRIES = 50;
+const CACHE_MAX_ENTRIES = 100;
 
 /** Hard bound on nesting through `executeSignatureHelpProvider`. */
 const MAX_NESTED_FETCHES = 4;
@@ -80,6 +80,9 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	 * order is not exposed to extensions.
 	 */
 	onServed: ((languageId: string) => void) | undefined;
+
+	/** The server's answer differs from the remembered one just shown: show it. */
+	onCorrected: ((document: vscode.TextDocument) => void) | undefined;
 	/**
 	 * True while VSCodeVim is out of Insert mode on this document: the popup is
 	 * then held back entirely — answering empty stops the chain, so the language
@@ -168,7 +171,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 
 		const site = call && callKey(document, call);
 		const started = Date.now();
-		const upstream = await this.race(document, position, site, config, !context?.isRetrigger);
+		const upstream = await this.race(document, position, site, call, config, !context?.isRetrigger);
 		this.lastUpstreamMs = Date.now() - started;
 		// The language server can take seconds on numpy, and Escape may have left
 		// Insert mode meanwhile: an answer landing now would open in Normal mode.
@@ -217,6 +220,7 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		document: vscode.TextDocument,
 		position: vscode.Position,
 		site: string | undefined,
+		call: CallSite | undefined,
 		config: vscode.WorkspaceConfiguration,
 		opening: boolean,
 	): Promise<vscode.SignatureHelp | undefined> {
@@ -224,16 +228,36 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 		const warmed = this.warmed;
 		const exact = warmed?.marker === key(document, position) && warmed.version === document.version;
 		const pending = exact ? warmed.help : this.fetchUpstream(document, position, site);
+		const named = call && nameKey(call.name);
 		const deadline = config.get<number>('upstreamTimeoutMs', 250);
-		if (deadline <= 0 || !site || !this.recall(site)) {
+		if (deadline <= 0 || !site) {
 			return pending;
 		}
-		// Opening the popup on a call whose signatures are already known, with
-		// no answer ready for this exact position (`a`, `A`, `o` from Normal
-		// mode, or coming back to a call): show them now rather than wait. The
-		// fetch still runs and its answer serves the next keystroke.
-		if (opening && !(exact && warmed.done)) {
-			return undefined;
+		// Opening the popup on signatures already known — this call site's, or
+		// the same callee's from elsewhere — with no answer ready for this exact
+		// position (a `(` just typed, `a`/`A`/`o` from Normal mode, coming back
+		// to a call): show them now rather than wait for the server.
+		const known = this.recall(site) ?? (named ? this.recall(named) : undefined);
+		if (opening && known && !(exact && warmed.done)) {
+			// The same name can be another function (`x.append` on another `x`),
+			// and the server knows the active parameter better than a comma
+			// count: when its answer differs from what was shown, hand it over.
+			const version = document.version;
+			const shown = known.signatures.map((signature) => signature.label).join('\n');
+			const shownParameter = call?.activeParameter ?? 0;
+			void pending.then((help) => {
+				const fresh = help?.signatures?.map((signature) => signature.label).join('\n') ?? '';
+				if (document.version !== version || (fresh === shown && (help?.activeParameter ?? 0) === shownParameter)) {
+					return;
+				}
+				this.warmed = { marker: key(document, position), version, help: Promise.resolve(help), done: true };
+				this.trace(config, `corrected ${call?.name ?? '?'}: the server's answer differs from the remembered one`);
+				this.onCorrected?.(document);
+			});
+			return { signatures: [...known.signatures], activeSignature: known.activeSignature, activeParameter: shownParameter };
+		}
+		if (!this.recall(site)) {
+			return pending;
 		}
 
 		let timer: ReturnType<typeof setTimeout>;
@@ -326,6 +350,15 @@ export class SignatureHintsProvider implements vscode.SignatureHelpProvider {
 	): void {
 		this.cache.delete(key);
 		this.cache.set(key, { signatures, activeSignature, at: Date.now() });
+		// Signatures also go by callee name: the next `np.linspace(` typed
+		// anywhere can open on them without waiting for the server. A call site
+		// key is `uri|name|line|character` (see `callKey`).
+		const name = key.split('|').at(-3);
+		if (name) {
+			const named = nameKey(name);
+			this.cache.delete(named);
+			this.cache.set(named, { signatures, activeSignature, at: Date.now() });
+		}
 		while (this.cache.size > CACHE_MAX_ENTRIES) {
 			// Map iterates in insertion order, so this drops the oldest.
 			const oldest = this.cache.keys().next().value;
@@ -612,6 +645,10 @@ function clamp(index: number | undefined, length: number): number {
 /** Identifies a call site, stable while the cursor moves through its arguments. */
 export function callKey(document: vscode.TextDocument, call: CallSite): string {
 	return `${document.uri.toString()}|${call.name}|${call.position.line}|${call.position.character}`;
+}
+
+function nameKey(name: string): string {
+	return `name|${name}`;
 }
 
 function key(document: vscode.TextDocument, position: vscode.Position): string {
