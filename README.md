@@ -7,6 +7,13 @@ the full documentation in a window big enough to read it.
 Built for Python and Jupyter notebooks first; it works for any language that has
 a signature help provider.
 
+**Made for [VSCodeVim](https://marketplace.visualstudio.com/items?itemName=vscodevim.vim)
+users too.** The popup follows Vim's modes: it shows in Insert mode only, never
+while you move through code in Normal mode, and a single `Escape` closes it and
+takes you back to Normal mode. `i`, `a`, `A`, `I`, `o` and `O` inside a call
+open it at once. Without VSCodeVim it behaves like any parameter hints popup.
+See [With VSCodeVim](#with-vscodevim).
+
 ![The signature for range, both overloads](docs/signature_range.png)
 
 ## What it does
@@ -19,6 +26,8 @@ a signature help provider.
 | Signature vs docs | always both | `signature` / `doc` / `both` / `none` |
 | Reading the docs | scroll a 440px popup | `alt+h`, in the resizable hover |
 | Overloads | one at a time, 1/2 navigation | stacked, with repeats folded away |
+| With VSCodeVim | opens in Normal mode too; `Escape` closes it but stays in Insert | Insert mode only; one `Escape` closes it and returns to Normal |
+| Opening speed | asks the language server when the popup is wanted | asks ahead, and reuses what it knows ([details](#how-fast-it-opens)) |
 
 ### Compact signatures
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.22.4
+
+- Documentation only: the README says up front that the extension is made for
+  VSCodeVim users too, and the comparison table lists the Vim behaviour and
+  the opening speed. `vim` and `vscodevim` are added to the keywords.
+
 ## 0.22.3
 
 - Documentation only: the README has a "How fast it opens" section with the
