@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.22.3
+
+- Documentation only: the README has a "How fast it opens" section with the
+  measured opening times since 0.21 and the rules for when remembered
+  signatures are shown.
+
 ## 0.22.2
 
 - **`a` is as immediate as `i` for every callee.** In Normal mode only the

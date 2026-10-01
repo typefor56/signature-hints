@@ -188,6 +188,44 @@ Normal, the editor's own style in Insert), so it follows
 modes cannot be told apart and the popup behaves as without Vim. Without
 VSCodeVim nothing changes.
 
+It also works when VSCodeVim runs in another extension host
+(`extensions.experimental.affinity`).
+
+## How fast it opens
+
+Most of the wait for a signature popup is not the language server: it is the
+time before anyone asks it. This extension asks ahead — as soon as the cursor
+arrives in a call, and under VSCodeVim while you are still in Normal mode — so
+the answer is ready, or on its way, when the popup is wanted.
+
+Measured with real key presses against a language server answering in 300 ms
+(Pylance takes 200–500 ms on numpy):
+
+| What you do | Before 0.21 | Now |
+| --- | --- | --- |
+| VSCodeVim: `i` or `a` with the cursor in a call | 500 ms | 70–110 ms |
+| VSCodeVim: `a` on the opening parenthesis | 360 ms | 75–90 ms |
+| VSCodeVim: `A`, `I`, `o`, `O` inside a call to an imported name | 340 ms | 70–140 ms |
+| Moving back into a call seen before | 440 ms | 65–80 ms |
+| Typing `(` after an imported name seen before (`np.linspace(`) | 440 ms | 75–85 ms |
+| Typing `(` after a name never seen | 440 ms | 340 ms (the server's own time) |
+
+Two rules keep it honest:
+
+- **The first `(` of a function waits for the language server.** There is
+  nothing to reuse yet, and a server cannot be asked about a parenthesis that
+  does not exist.
+- **Remembered signatures are only shown when they cannot be wrong.** That is,
+  when the callee comes from an `import` that is never bound again (`np.…`,
+  `plt.…`, `from numpy import linspace`) and the arguments typed so far are
+  positional. A method of a variable (`df.plot(`, `x.append(`) or a local
+  function waits for the server, so a stale signature never flashes. This rule
+  reads Python imports; in other languages the popup always waits.
+
+Signatures are remembered for five minutes. `signatureHints.upstreamTimeoutMs`
+(250 ms) is how long a keystroke inside an open popup waits for the server
+before the remembered answer is used.
+
 ## Commands
 
 | Command | Key |
