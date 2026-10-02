@@ -205,6 +205,13 @@ promise when asked for the same position and document version (one slot).
 add requests. Measured with real keys and a 300 ms server: `i` in a call
 500 → 90 ms, Insert mode 440 → 340 ms.
 
+**In Insert mode, warm on arrival in a call only** (`Reopener.lastWarmed`).
+Warming on every cursor move doubled the requests while typing arguments
+(popup open, VS Code retriggers per key): Pylance CPU on a line with calls,
+typed key by key in a 48-cell notebook, 11.0 s without the extension, 15.9 s
+with 0.22.4, 10.5 s after. Key-to-text latency itself is the same with or
+without the extension (60–80 ms per key in the probe, VSCodeVim's round trip).
+
 **Opening on a known call shows the cache at once.** `a`, `A`, `I`, `o`, `O`
 land on another position (or document version) than the warmed one, and the
 leading-edge warm they fire would make the provider wait for the server again.

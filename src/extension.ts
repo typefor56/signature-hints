@@ -186,6 +186,8 @@ class Reopener {
 	/** The call last triggered for, so `Escape` is not immediately undone. */
 	private lastCall: string | undefined;
 	private lastNudge = 0;
+	/** The call site last fetched ahead for. */
+	private lastWarmed: string | undefined;
 	/** Call site the user closed by hand; left alone until the cursor leaves it. */
 	private dismissed: string | undefined;
 
@@ -230,6 +232,15 @@ class Reopener {
 		const call = resolveCall(editor.document, position);
 		const exclude = excludePatterns(config.get<ExcludeSetting>('exclude'), editor.document.languageId);
 		const site = call && !isExcluded(call.name, exclude) ? callKey(editor.document, call) : undefined;
+		// In Insert mode, on arriving in a call only. Once inside, the popup is
+		// open and VS Code asks on every keystroke anyway: asking ahead as well
+		// had the language server answer twice per key (about +45% of its CPU
+		// while typing arguments, measured on Pylance).
+		const arrived = site !== this.lastWarmed;
+		this.lastWarmed = site;
+		if (!ahead && !arrived) {
+			return;
+		}
 		const first = site ? this.provider.warm(editor.document, position, site) : undefined;
 		if (!ahead || position.character >= editor.document.lineAt(position.line).text.length) {
 			return;

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.22.5
+
+- **Less work for the language server while typing arguments.** Since 0.21.0
+  the server was asked ahead on every keystroke inside a call, on top of VS
+  Code's own request: about 45% more Pylance CPU on a line with calls. It is now
+  asked ahead only on arriving in a call; Pylance's CPU while typing is back to
+  what it is without the extension, and the opening times are unchanged.
+
 ## 0.22.4
 
 - Documentation only: the README says up front that the extension is made for
