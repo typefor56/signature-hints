@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.22.6
+
+- **Nothing added to each keystroke any more.** Outside a call the provider
+  was registered again on every key, twice, to stay in front of the language
+  server; each registration is a round trip to the window. Under VSCodeVim,
+  whose typing is already slow, that was 7–15 ms more per key with a key held
+  down. It now happens at most once a second, and typing costs the same with
+  or without the extension.
+
 ## 0.22.5
 
 - **Less work for the language server while typing arguments.** Since 0.21.0

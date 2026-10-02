@@ -44,6 +44,7 @@ class Registration {
 	private readonly lastServed = new Map<string, number>();
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private attempt = 0;
+	private lastRefresh = 0;
 	/** Registrations performed, for Show Diagnostics. */
 	refreshes = 0;
 
@@ -56,6 +57,7 @@ class Registration {
 			retriggerCharacters: [',', ')'],
 		});
 		this.refreshes++;
+		this.lastRefresh = Date.now();
 	}
 
 	/**
@@ -92,6 +94,15 @@ class Registration {
 			return false;
 		}
 		if (this.provider.wasCalledFor(document)) {
+			return false;
+		}
+		// Not on every keystroke. Outside a call nothing ever calls us, so this
+		// used to re-register twice per key — and each registration is a round
+		// trip to the window, which notifies every editor (every cell of a
+		// notebook). Measured with a key held down under VSCodeVim: 7–15 ms more
+		// per key. The language server takes the lead back only when it restarts,
+		// so once a second is plenty.
+		if (Date.now() - this.lastRefresh < RECLAIM_THROTTLE_MS) {
 			return false;
 		}
 		this.refresh();
@@ -148,6 +159,9 @@ class Registration {
 
 /** Settles before probing the call site, so held arrow keys cost one check. */
 const REOPEN_DEBOUNCE_MS = 50;
+
+/** Minimum gap between two re-registrations made to stay in front. */
+const RECLAIM_THROTTLE_MS = 1000;
 
 /** Minimum gap between two attempts to replace a popup that is not ours. */
 const NUDGE_THROTTLE_MS = 1000;

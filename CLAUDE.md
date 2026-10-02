@@ -212,6 +212,17 @@ typed key by key in a 48-cell notebook, 11.0 s without the extension, 15.9 s
 with 0.22.4, 10.5 s after. Key-to-text latency itself is the same with or
 without the extension (60–80 ms per key in the probe, VSCodeVim's round trip).
 
+**`reclaim` is throttled to once a second (`RECLAIM_THROTTLE_MS`).** Outside a
+call nothing calls the provider, so `wasCalledFor` is false on every key and
+`reclaim` re-registered twice per keystroke. Measured with a key held down
+under VSCodeVim (80 repeats, notebook cell): 44 ms per key with Vim alone,
+50–60 with 0.22.5, 44 after. VSCodeVim's own 40–45 ms per key (every character
+is a round trip through its `type` override) is not ours to fix: typing letters
+around it with `default:type` keybindings was tried and **reorders the text**
+(`np.linspace(0, 10` came out as `nnspap.li(0,10ce `) — direct characters
+overtake the ones still queued in VSCodeVim, which then puts the cursor back
+where it believes it is. Do not retry.
+
 **Opening on a known call shows the cache at once.** `a`, `A`, `I`, `o`, `O`
 land on another position (or document version) than the warmed one, and the
 leading-edge warm they fire would make the provider wait for the server again.
